@@ -8,4 +8,12 @@ vet: ## Run go vet against code.
 
 .PHONY: build
 build: fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+	go build -o bin/avm-sync main.go
+
+.PHONY: run
+run:
+	go run main.go \
+		--ado-organization="$(ADO_ORG)" \
+		--ado-project="$(ADO_PROJECT)" \
+		--ado-repo="$(ADO_REPO)" \
+		--ado-pat="$(ADO_PAT)"

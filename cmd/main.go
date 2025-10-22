@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"flag"
@@ -9,13 +9,16 @@ import (
 	"go.uber.org/zap"
 )
 
-func main() {
+func Execute() {
 
 	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
 	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
 	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", false, "Process utility modules")
 	flag.BoolVar(&config.CleanTempModulesDir, "clean-temp", false, "Clean temporary modules directory before processing")
 	flag.StringVar(&config.AdoOrganization, "ado-organization", "", "The ADO organization")
+	flag.StringVar(&config.AdoProject, "ado-project", "", "The ADO project")
+	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
+	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token")
 	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
 
 	logger, _ := zap.NewProduction()
@@ -65,5 +68,11 @@ func main() {
 func parseRequiredFlags() {
 	if config.AdoOrganization == "" {
 		panic("ADO organization is required. Use -ado-organization to specify it.")
+	}
+	if config.AdoProject == "" {
+		panic("ADO project is required. Use -ado-project to specify it.")
+	}
+	if config.AdoRepo == "" {
+		panic("ADO repository is required. Use -ado-repo to specify it.")
 	}
 }

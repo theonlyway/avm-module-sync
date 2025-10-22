@@ -15,3 +15,6 @@ var CleanTempModulesDir bool
 
 var AdoOrganizationUrl string = "https://dev.azure.com/"
 var AdoOrganization string
+var AdoProject string
+var AdoRepo string
+var AdoPat string
