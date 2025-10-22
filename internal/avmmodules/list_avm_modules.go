@@ -5,12 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gocarina/gocsv"
-)
-
-const (
-	resourceModulesUrl string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformResourceModules.csv"
-	patternModulesUrl  string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformPatternModules.csv"
-	utilityModulesUrl  string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv"
+	"github.com/theonlyway/avm-module-sync/internal/config"
 )
 
 type ResourceModulesStruct struct {
@@ -50,7 +45,7 @@ type UtilityModulesStruct struct {
 }
 
 func getResourceModules() ([]ResourceModulesStruct, error) {
-	resp, err := http.Get(resourceModulesUrl)
+	resp, err := http.Get(config.ResourceModulesUrl)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching resource modules: %w", err)
 	}
@@ -68,7 +63,7 @@ func getResourceModules() ([]ResourceModulesStruct, error) {
 }
 
 func getPatternModules() ([]PatternModulesStruct, error) {
-	resp, err := http.Get(patternModulesUrl)
+	resp, err := http.Get(config.PatternModulesUrl)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching pattern modules: %w", err)
 	}
@@ -86,7 +81,7 @@ func getPatternModules() ([]PatternModulesStruct, error) {
 }
 
 func getUtilityModules() ([]UtilityModulesStruct, error) {
-	resp, err := http.Get(utilityModulesUrl)
+	resp, err := http.Get(config.UtilityModulesUrl)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching utility modules: %w", err)
 	}
