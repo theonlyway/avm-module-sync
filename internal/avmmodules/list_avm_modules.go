@@ -24,6 +24,7 @@ type ResourceModulesStruct struct {
 	RepoURL                 string `csv:"RepoURL"`
 	PublicRegistryReference string `csv:"PublicRegistryReference"`
 	Description             string `csv:"Description"`
+	FirstPublishedIn        string `csv:"FirstPublishedIn"`
 }
 
 type PatternModulesStruct struct {
@@ -34,6 +35,7 @@ type PatternModulesStruct struct {
 	RepoURL                 string `csv:"RepoURL"`
 	PublicRegistryReference string `csv:"PublicRegistryReference"`
 	Description             string `csv:"Description"`
+	FirstPublishedIn        string `csv:"FirstPublishedIn"`
 }
 
 type UtilityModulesStruct struct {
@@ -44,32 +46,7 @@ type UtilityModulesStruct struct {
 	RepoURL                 string `csv:"RepoURL"`
 	PublicRegistryReference string `csv:"PublicRegistryReference"`
 	Description             string `csv:"Description"`
-}
-
-func PrintResourceModules() {
-	modules, err := getResourceModules()
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	if len(modules) == 0 {
-		fmt.Println("No resource modules found.")
-		return
-	}
-	for _, module := range modules {
-		fmt.Printf("ProviderNamespace: %s\nResourceType: %s\nModuleDisplayName: %s\nAlternativeNames: %s\nModuleName: %s\nParentModule: %s\nModuleStatus: %s\nRepoURL: %s\nPublicRegistryReference: %s\nDescription: %s\n\n",
-			module.ProviderNamespace,
-			module.ResourceType,
-			module.ModuleDisplayName,
-			module.AlternativeNames,
-			module.ModuleName,
-			module.ParentModule,
-			module.ModuleStatus,
-			module.RepoURL,
-			module.PublicRegistryReference,
-			module.Description,
-		)
-	}
+	FirstPublishedIn        string `csv:"FirstPublishedIn"`
 }
 
 func getResourceModules() ([]ResourceModulesStruct, error) {
