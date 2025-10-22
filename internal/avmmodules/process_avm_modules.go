@@ -3,6 +3,7 @@ package avmmodules
 import (
 	"io"
 	"os"
+	"regexp"
 
 	"github.com/go-git/go-git/v6"
 	"github.com/theonlyway/avm-module-sync/internal/config"
@@ -16,15 +17,33 @@ type ModuleProcessor struct {
 	SugaredLogger *zap.SugaredLogger
 }
 
+var moduleNameRegex = regexp.MustCompile(`^(avm)-(res-)(.+)$`)
+
 func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
-	cleanupTempRepos()
+	cleanupTempRepos(p)
 	modules, err := getResourceModules()
 	if err != nil {
 		return err
 	}
 	for _, module := range modules {
-		cloneRepo(module.RepoURL, config.TempRepoPath+"/resources/"+module.ModuleName)
-		processFunc(module)
+		tempPath := config.TempRepoPath + "/resources/" + module.ModuleName
+		newModuleName := transformModuleName(module.ModuleName)
+		newPath := config.TempRepoPath + "/resources/" + newModuleName
+		p.Logger.Info("Transformed module name", zap.String("old", module.ModuleName), zap.String("new", newModuleName))
+
+		if _, err := os.Stat(tempPath); err == nil {
+			p.Logger.Warn("Temporary repository path exists", zap.String("path", tempPath))
+			removeGitFolder(p, tempPath)
+			renameFolders(p, tempPath, newPath)
+		} else if os.IsNotExist(err) {
+			cloneRepo(module.RepoURL, tempPath)
+			removeGitFolder(p, tempPath)
+			renameFolders(p, tempPath, newPath)
+			processFunc(module)
+		} else {
+			p.Logger.Error("Error checking temporary repository path", zap.String("path", tempPath), zap.Error(err))
+		}
+
 	}
 	return nil
 }
@@ -70,6 +89,43 @@ func cloneRepo(repoURL string, destPath string) error {
 	return nil
 }
 
-func cleanupTempRepos() {
+func cleanupTempRepos(p *ModuleProcessor) {
+	if !config.CleanTempModulesDir {
+		return
+	}
+	p.Logger.Info("Cleaning up temporary repositories")
 	os.RemoveAll(config.TempRepoPath)
+}
+
+func removeGitFolder(p *ModuleProcessor, path string) {
+	p.Logger.Info("Removing .git folder from", zap.String("path", path))
+	gitPath := path + "/.git"
+	os.RemoveAll(gitPath)
+}
+
+func transformModuleName(name string) string {
+	// Replace 'avm' with 'rvm' at the start, and insert 'azurerm' after 'res-'
+	if matches := moduleNameRegex.FindStringSubmatch(name); len(matches) == 4 {
+		return "rvm-" + matches[2] + "azurerm-" + matches[3]
+	}
+	return name
+}
+
+func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
+
+	if _, err := os.Stat(newPath); err == nil {
+		p.Logger.Warn("New path already exists, removing", zap.String("path", newPath))
+		os.RemoveAll(newPath)
+	}
+	p.Logger.Info("Renaming folder", zap.String("old", oldPath), zap.String("new", newPath))
+	err := os.Rename(oldPath, newPath)
+	if err != nil {
+		p.Logger.Error("Error renaming folder", zap.String("old", oldPath), zap.String("new", newPath), zap.Error(err))
+	}
+}
+
+func (p *ModuleProcessor) ProcessResourceModule(module ResourceModulesStruct) {
+	if p.Logger != nil {
+		p.SugaredLogger.Infow("Processed resource module", "module", module.ModuleName)
+	}
 }

@@ -11,29 +11,33 @@ import (
 
 func main() {
 
-	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process Resource Modules")
-	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process Pattern Modules")
-	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", false, "Process Utility Modules")
-	flag.BoolVar(&config.DebugMode, "debug", false, "Enable Debug Mode")
+	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
+	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
+	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", false, "Process utility modules")
+	flag.BoolVar(&config.CleanTempModulesDir, "clean-temp", false, "Clean temporary modules directory before processing")
+	flag.StringVar(&config.AdoOrganization, "ado-organization", "", "The ADO organization")
+	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
 
 	logger, _ := zap.NewProduction()
-	suagared := logger.Sugar()
+	sugaredLogger := logger.Sugar()
+	defer logger.Sync()
 	flag.Parse()
+	parseRequiredFlags()
 
-	processor := avmmodules.ModuleProcessor{Logger: logger, SugaredLogger: suagared}
+	processor := avmmodules.ModuleProcessor{Logger: logger, SugaredLogger: sugaredLogger}
 
 	if config.ProcessResourceModules {
-		logger.Info("Resource Modules:")
+		sugaredLogger.Infow("resource modules:")
 		err := processor.ProcessResourceModules(func(module avmmodules.ResourceModulesStruct) {
-			logger.Info(
-				"Processed resource module",
-				zap.String("Module", module.ModuleName),
-				zap.String("Status", module.ModuleStatus),
-				zap.String("FirstPublishedIn", module.FirstPublishedIn),
+			sugaredLogger.Infow(
+				"processing resource module",
+				"module", module.ModuleName,
+				"status", module.ModuleStatus,
+				"firstPublishedIn", module.FirstPublishedIn,
 			)
 		})
 		if err != nil {
-			logger.Error("Error processing resource modules:", zap.Error(err))
+			logger.Error("error processing resource modules:", zap.Error(err))
 		}
 	}
 
@@ -55,5 +59,11 @@ func main() {
 		if err != nil {
 			fmt.Println("Error processing utility modules:", err)
 		}
+	}
+}
+
+func parseRequiredFlags() {
+	if config.AdoOrganization == "" {
+		panic("ADO organization is required. Use -ado-organization to specify it.")
 	}
 }

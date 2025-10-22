@@ -11,3 +11,7 @@ var ProcessResourceModules bool
 var ProcessPatternModules bool
 var ProcessUtilityModules bool
 var DebugMode bool
+var CleanTempModulesDir bool
+
+var AdoOrganizationUrl string = "https://dev.azure.com/"
+var AdoOrganization string
