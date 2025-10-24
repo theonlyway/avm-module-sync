@@ -1,10 +1,12 @@
 package config
 
 const (
-	TempRepoPath       string = "./modules"
-	ResourceModulesUrl string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformResourceModules.csv"
-	PatternModulesUrl  string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformPatternModules.csv"
-	UtilityModulesUrl  string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv"
+	TempRepoPath          string = "./modules"
+	ResourceModulesUrl    string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformResourceModules.csv"
+	PatternModulesUrl     string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformPatternModules.csv"
+	UtilityModulesUrl     string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv"
+	AdoEnterpriseAppId    string = "499b84ac-1321-427f-aa17-267ca6975798"
+	AdoEnterpriseAppScope string = AdoEnterpriseAppId + "/.default"
 )
 
 var ProcessResourceModules bool
@@ -12,6 +14,7 @@ var ProcessPatternModules bool
 var ProcessUtilityModules bool
 var DebugMode bool
 var CleanTempModulesDir bool
+var UseLocalIdentity bool
 
 var AdoOrganizationUrl string = "https://dev.azure.com/"
 var AdoOrganization string

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/core"
 	"github.com/theonlyway/avm-module-sync/internal/avmmodules"
@@ -13,7 +15,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func Execute() {
+func Main() {
 
 	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
 	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
@@ -23,33 +25,33 @@ func Execute() {
 	flag.StringVar(&config.AdoProject, "ado-project", "", "The ADO project")
 	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
 	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token")
-
-	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
-
-	logger, _ := zap.NewProduction()
-	sugaredLogger := logger.Sugar()
-	defer logger.Sync()
+	flag.BoolVar(&config.UseLocalIdentity, "use-local-identity", false, "Use the local identity")
+	flag.BoolVar(&config.DebugMode, "debug", true, "Enable debug mode")
 	flag.Parse()
-	parseRequiredFlags()
+	var logger *zap.Logger
+	var sugaredLogger *zap.SugaredLogger
+
+	if config.DebugMode {
+		logger, _ = zap.NewDevelopment()
+		sugaredLogger = logger.Sugar()
+		defer logger.Sync()
+
+	} else {
+		logger, _ = zap.NewProduction()
+		sugaredLogger = logger.Sugar()
+		defer logger.Sync()
+	}
+
+	flag.VisitAll(func(f *flag.Flag) {
+		logger.Debug("Flag value", zap.String("name", f.Name), zap.String("value", f.Value.String()))
+	})
 
 	processor := avmmodules.ModuleProcessor{Logger: logger, SugaredLogger: sugaredLogger}
 
-	organizationUrl := config.AdoOrganizationUrl + config.AdoOrganization
-
-	// Create a connection to your organization
-	connection := azuredevops.NewPatConnection(organizationUrl, config.AdoPat)
-
 	ctx := context.Background()
-
-	// Create a client to interact with the Core area
-	coreClient, err := core.NewClient(ctx, connection)
-	if err != nil {
-		logger.Error("Failed to create client", zap.Error(err))
-		os.Exit(1)
-	}
+	coreClient := adoClient(logger, ctx)
 
 	coreClient.GetProjects(ctx, core.GetProjectsArgs{})
-
 
 	if config.ProcessResourceModules {
 		sugaredLogger.Infow("resource modules:")
@@ -87,17 +89,45 @@ func Execute() {
 	}
 }
 
-func parseRequiredFlags() {
-	if config.AdoOrganization == "" {
-		panic("ADO organization is required. Use -ado-organization to specify it.")
+func adoClient(logger *zap.Logger, ctx context.Context) core.Client {
+	var connection *azuredevops.Connection
+
+	organizationUrl := config.AdoOrganizationUrl + config.AdoOrganization
+
+	// Create a connection to your organization
+	if config.AdoPat != "" && !config.UseLocalIdentity {
+		connection = azuredevops.NewPatConnection(organizationUrl, config.AdoPat)
+	} else if config.UseLocalIdentity {
+		token, err := getAzureAccessToken(logger, config.AdoEnterpriseAppScope)
+		if err != nil {
+			logger.Error("Error", zap.Error(err))
+		}
+		logger.Debug("Token", zap.String("token", token))
 	}
-	if config.AdoProject == "" {
-		panic("ADO project is required. Use -ado-project to specify it.")
+
+	// Create a client to interact with the Core area
+	coreClient, err := core.NewClient(ctx, connection)
+	if err != nil {
+		logger.Error("Failed to create client", zap.Error(err))
+		os.Exit(1)
 	}
-	if config.AdoRepo == "" {
-		panic("ADO repository is required. Use -ado-repo to specify it.")
+
+	return coreClient
+}
+
+func getAzureAccessToken(logger *zap.Logger, resource string) (string, error) {
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		logger.Error("Error", zap.Error(err))
+		os.Exit(1)
 	}
-	if config.AdoPat == "" {
-		panic("ADO personal access token is required. Use -ado-pat to specify it.")
+
+	token, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
+		Scopes: []string{resource},
+	})
+	if err != nil {
+		logger.Error("Error", zap.Error(err))
+		os.Exit(1)
 	}
+	return token.Token, nil
 }
