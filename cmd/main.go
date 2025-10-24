@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
-	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/core"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/core"
+	"github.com/microsoft/azure-devops-go-api/azuredevops/git"
+	"github.com/theonlyway/avm-module-sync/internal/ado"
 	"github.com/theonlyway/avm-module-sync/internal/avmmodules"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
 )
 
 func Main() {
+	var logger *zap.Logger
+	var sugaredLogger *zap.SugaredLogger
 
 	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
 	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
@@ -28,8 +29,6 @@ func Main() {
 	flag.BoolVar(&config.UseLocalIdentity, "use-local-identity", false, "Use the local identity")
 	flag.BoolVar(&config.DebugMode, "debug", true, "Enable debug mode")
 	flag.Parse()
-	var logger *zap.Logger
-	var sugaredLogger *zap.SugaredLogger
 
 	if config.DebugMode {
 		logger, _ = zap.NewDevelopment()
@@ -42,16 +41,39 @@ func Main() {
 		defer logger.Sync()
 	}
 
-	flag.VisitAll(func(f *flag.Flag) {
-		logger.Debug("Flag value", zap.String("name", f.Name), zap.String("value", f.Value.String()))
-	})
-
 	processor := avmmodules.ModuleProcessor{Logger: logger, SugaredLogger: sugaredLogger}
 
 	ctx := context.Background()
-	coreClient := adoClient(logger, ctx)
+	clients := ado.NewAdoClients(logger, ctx)
 
-	coreClient.GetProjects(ctx, core.GetProjectsArgs{})
+	projectValue, err := clients.CoreClient.GetProject(ctx, core.GetProjectArgs{
+		ProjectId: &config.AdoProject,
+	})
+	if err != nil {
+		logger.Error("Failed to get project", zap.Error(err))
+		os.Exit(1)
+	}
+	var webURL string
+	if links, ok := projectValue.Links.(map[string]interface{}); ok {
+		if web, ok := links["web"].(map[string]interface{}); ok {
+			if href, ok := web["href"].(string); ok {
+				webURL = href
+			}
+		}
+	}
+	logger.Debug("Project", zap.Any("response", projectValue))
+	logger.Info("Looked up project", zap.String("project", *projectValue.Name), zap.Any("id", *projectValue.Id), zap.String("url", webURL))
+
+	repoValue, err := clients.GitClient.GetRepository(ctx, git.GetRepositoryArgs{
+		RepositoryId: &config.AdoRepo,
+		Project:      projectValue.Name,
+	})
+	if err != nil {
+		logger.Error("Failed to get repository", zap.Error(err))
+		os.Exit(1)
+	}
+	logger.Debug("Repository", zap.Any("response", repoValue))
+	logger.Info("Looked up repository", zap.String("repo", *repoValue.Name), zap.Any("id", *repoValue.Id), zap.String("url", *repoValue.WebUrl))
 
 	if config.ProcessResourceModules {
 		sugaredLogger.Infow("resource modules:")
@@ -89,45 +111,18 @@ func Main() {
 	}
 }
 
-func adoClient(logger *zap.Logger, ctx context.Context) core.Client {
-	var connection *azuredevops.Connection
-
-	organizationUrl := config.AdoOrganizationUrl + config.AdoOrganization
-
-	// Create a connection to your organization
-	if config.AdoPat != "" && !config.UseLocalIdentity {
-		connection = azuredevops.NewPatConnection(organizationUrl, config.AdoPat)
-	} else if config.UseLocalIdentity {
-		token, err := getAzureAccessToken(logger, config.AdoEnterpriseAppScope)
-		if err != nil {
-			logger.Error("Error", zap.Error(err))
+func validateRequiredFlags(logger *zap.Logger) {
+	var missingFlags []string
+	flag.VisitAll(func(f *flag.Flag) {
+		if f.Value.String() == "" {
+			missingFlags = append(missingFlags, f.Name)
 		}
-		logger.Debug("Token", zap.String("token", token))
-	}
-
-	// Create a client to interact with the Core area
-	coreClient, err := core.NewClient(ctx, connection)
-	if err != nil {
-		logger.Error("Failed to create client", zap.Error(err))
-		os.Exit(1)
-	}
-
-	return coreClient
-}
-
-func getAzureAccessToken(logger *zap.Logger, resource string) (string, error) {
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
-	if err != nil {
-		logger.Error("Error", zap.Error(err))
-		os.Exit(1)
-	}
-
-	token, err := cred.GetToken(context.Background(), policy.TokenRequestOptions{
-		Scopes: []string{resource},
 	})
-	if err != nil {
-		logger.Error("Error", zap.Error(err))
+
+	if len(missingFlags) > 0 {
+		for _, flagName := range missingFlags {
+			logger.Error("Missing required flag", zap.String("flag", flagName))
+		}
 		os.Exit(1)
 	}
-	return token.Token, nil
 }
