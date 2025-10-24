@@ -17,15 +17,22 @@ type ModuleProcessor struct {
 	SugaredLogger *zap.SugaredLogger
 }
 
+type ModulesStruct struct {
+	ResourceModules []ResourceModulesStruct
+	PatternModules  []PatternModulesStruct
+	UtilityModules  []UtilityModulesStruct
+}
+
 var moduleNameRegex = regexp.MustCompile(`^(avm)-(res-)(.+)$`)
 
 func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
 	cleanupTempRepos(p)
-	modules, err := getResourceModules()
+	modules, err := getModules()
 	if err != nil {
 		return err
 	}
-	for _, module := range modules {
+
+	for _, module := range modules.ResourceModules {
 		tempPath := config.TempRepoPath + "/resources/" + module.ModuleName
 		newModuleName := transformModuleName(module.ModuleName)
 		newPath := config.TempRepoPath + "/resources/" + newModuleName
@@ -47,6 +54,30 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 	}
 	return nil
 }
+
+func getModules() (*ModulesStruct, error) {
+	resourceModules, err := getResourceModules()
+	if err != nil {
+		return nil, err
+	}
+
+	patternModules, err := getPatternModules()
+	if err != nil {
+		return nil, err
+	}
+
+	utilityModules, err := getUtilityModules()
+	if err != nil {
+		return nil, err
+	}
+
+	return &ModulesStruct{
+		ResourceModules: resourceModules,
+		PatternModules:  patternModules,
+		UtilityModules:  utilityModules,
+	}, nil
+}
+
 
 func ProcessPatternModules(processFunc func(PatternModulesStruct)) error {
 	modules, err := getPatternModules()
@@ -121,11 +152,5 @@ func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
 	err := os.Rename(oldPath, newPath)
 	if err != nil {
 		p.Logger.Error("Error renaming folder", zap.String("old", oldPath), zap.String("new", newPath), zap.Error(err))
-	}
-}
-
-func (p *ModuleProcessor) ProcessResourceModule(module ResourceModulesStruct) {
-	if p.Logger != nil {
-		p.SugaredLogger.Infow("Processed resource module", "module", module.ModuleName)
 	}
 }

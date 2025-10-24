@@ -26,7 +26,7 @@ func Main() {
 	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
 	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token")
 	flag.BoolVar(&config.UseLocalIdentity, "use-local-identity", false, "Use the local identity")
-	flag.BoolVar(&config.ReadLocalCsvFile, "read-local-csv", false, "Read module CSV files from local disk instead of downloading")
+	flag.BoolVar(&config.ReadLocalCsvFile, "read-local-csv", true, "Read module CSV files from local disk instead of downloading")
 	flag.BoolVar(&config.DebugMode, "debug", true, "Enable debug mode")
 	flag.Parse()
 

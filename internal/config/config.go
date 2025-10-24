@@ -7,6 +7,7 @@ const (
 	UtilityModulesUrl     string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv"
 	AdoEnterpriseAppId    string = "499b84ac-1321-427f-aa17-267ca6975798"
 	AdoEnterpriseAppScope string = AdoEnterpriseAppId + "/.default"
+	LocalCsvPath          string = "./third_party/module-indexes"
 )
 
 var ProcessResourceModules bool
