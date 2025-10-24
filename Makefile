@@ -37,6 +37,7 @@ build-windows:
 
 .PHONY: download-csv-files
 download-csv-files:
+	mkdir -p third_party/module-indexes
 	curl -o third_party/module-indexes/TerraformResourceModules.csv https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformResourceModules.csv
 	curl -o third_party/module-indexes/TerraformPatternModules.csv https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformPatternModules.csv
 	curl -o third_party/module-indexes/TerraformUtilityModules.csv https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv
