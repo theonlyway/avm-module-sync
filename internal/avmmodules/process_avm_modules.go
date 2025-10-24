@@ -78,7 +78,6 @@ func getModules() (*ModulesStruct, error) {
 	}, nil
 }
 
-
 func ProcessPatternModules(processFunc func(PatternModulesStruct)) error {
 	modules, err := getPatternModules()
 	if err != nil {
