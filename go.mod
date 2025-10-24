@@ -2,10 +2,12 @@ module github.com/theonlyway/avm-module-sync
 
 go 1.24.5
 
-require github.com/go-git/go-git/v6 v6.0.0-20251021092831-91c33c9361ce
+require (
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.19.1
+	github.com/go-git/go-git/v6 v6.0.0-20251021092831-91c33c9361ce
+)
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.19.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.5.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
@@ -29,7 +31,6 @@ require (
 	github.com/kevinburke/ssh_config v1.4.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/microsoft/azure-devops-go-api/azuredevops v1.0.0-b5
-	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/pjbgf/sha1cd v0.5.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

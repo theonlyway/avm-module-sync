@@ -15,6 +15,7 @@ var ProcessUtilityModules bool
 var DebugMode bool
 var CleanTempModulesDir bool
 var UseLocalIdentity bool
+var ReadLocalCsvFile bool
 
 var AdoOrganizationUrl string = "https://dev.azure.com/"
 var AdoOrganization string

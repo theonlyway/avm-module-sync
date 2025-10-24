@@ -34,3 +34,9 @@ build-linux:
 .PHONY: build-windows
 build-windows:
 	GOOS=windows GOARCH=amd64 go build -o bin/avm-sync-windows.exe main.go
+
+.PHONY: download-csv-files
+download-csv-files:
+	curl -o third_party/module-indexes/TerraformResourceModules.csv https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformResourceModules.csv
+	curl -o third_party/module-indexes/TerraformPatternModules.csv https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformPatternModules.csv
+	curl -o third_party/module-indexes/TerraformUtilityModules.csv https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv

@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 
 	"github.com/microsoft/azure-devops-go-api/azuredevops/core"
@@ -27,6 +26,7 @@ func Main() {
 	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
 	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token")
 	flag.BoolVar(&config.UseLocalIdentity, "use-local-identity", false, "Use the local identity")
+	flag.BoolVar(&config.ReadLocalCsvFile, "read-local-csv", false, "Read module CSV files from local disk instead of downloading")
 	flag.BoolVar(&config.DebugMode, "debug", true, "Enable debug mode")
 	flag.Parse()
 
@@ -76,7 +76,7 @@ func Main() {
 	logger.Info("Looked up repository", zap.String("repo", *repoValue.Name), zap.Any("id", *repoValue.Id), zap.String("url", *repoValue.WebUrl))
 
 	if config.ProcessResourceModules {
-		sugaredLogger.Infow("resource modules:")
+		sugaredLogger.Infow("Processing resource modules")
 		err := processor.ProcessResourceModules(func(module avmmodules.ResourceModulesStruct) {
 			sugaredLogger.Infow(
 				"processing resource module",
@@ -91,22 +91,32 @@ func Main() {
 	}
 
 	if config.ProcessPatternModules {
-		fmt.Println("Pattern Modules:")
+		sugaredLogger.Infow("Processing pattern modules")
 		err := avmmodules.ProcessPatternModules(func(module avmmodules.PatternModulesStruct) {
-			fmt.Printf("Module: %s, Status: %s, First Published In: %s\n", module.ModuleName, module.ModuleStatus, module.FirstPublishedIn)
+			sugaredLogger.Infow(
+				"processing pattern module",
+				"module", module.ModuleName,
+				"status", module.ModuleStatus,
+				"firstPublishedIn", module.FirstPublishedIn,
+			)
 		})
 		if err != nil {
-			fmt.Println("Error processing pattern modules:", err)
+			sugaredLogger.Error("error processing pattern modules:", zap.Error(err))
 		}
 	}
 
 	if config.ProcessUtilityModules {
-		fmt.Println("Utility Modules:")
+		sugaredLogger.Infow("Processing utility modules")
 		err := avmmodules.ProcessUtilityModules(func(module avmmodules.UtilityModulesStruct) {
-			fmt.Printf("Module: %s, Status: %s, First Published In: %s\n", module.ModuleName, module.ModuleStatus, module.FirstPublishedIn)
+			sugaredLogger.Infow(
+				"processing utility module",
+				"module", module.ModuleName,
+				"status", module.ModuleStatus,
+				"firstPublishedIn", module.FirstPublishedIn,
+			)
 		})
 		if err != nil {
-			fmt.Println("Error processing utility modules:", err)
+			sugaredLogger.Error("error processing utility modules:", zap.Error(err))
 		}
 	}
 }
