@@ -114,14 +114,6 @@ func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
 	}
 }
 
-func transformModuleName(name string) string {
-	var moduleNameRegex = regexp.MustCompile(`^(avm)-(res-)(.+)$`)
-	if matches := moduleNameRegex.FindStringSubmatch(name); len(matches) == 4 {
-		return "rvm-" + matches[2] + "azurerm-" + matches[3]
-	}
-	return name
-}
-
 func (p *ModuleProcessor) CleanupTempRepos() {
 	if !config.CleanTempModulesDir {
 		return
