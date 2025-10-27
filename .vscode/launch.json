@@ -14,7 +14,7 @@
             "args": [
                 "--ado-organization=riotintodevops",
                 "--ado-project=Digital Products",
-                "--ado-repo=aw-testing-repo",
+                "--ado-repo=aw-terraform-fork",
                 "--use-local-identity",
                 "--read-local-csv"
             ]

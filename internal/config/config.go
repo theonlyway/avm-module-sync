@@ -1,7 +1,8 @@
 package config
 
 const (
-	TempRepoPath              string = "./avm_modules"
+	TempAvmModuleRepoPath     string = "./avm_modules"
+	TempSourceRepoPath        string = "./source_repo"
 	ResourceModulesUrl        string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformResourceModules.csv"
 	PatternModulesUrl         string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformPatternModules.csv"
 	UtilityModulesUrl         string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv"

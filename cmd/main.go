@@ -77,6 +77,7 @@ func Main() {
 	}
 	logger.Debug("Repository", zap.Any("response", repoValue))
 	logger.Info("Looked up repository", zap.String("repo", *repoValue.Name), zap.Any("id", *repoValue.Id), zap.String("url", *repoValue.WebUrl))
+	logger.Info("Cloning source repo", zap.String("remote", *repoValue.WebUrl))
 
 	if config.ProcessResourceModules {
 		sugaredLogger.Infow("Processing resource modules")

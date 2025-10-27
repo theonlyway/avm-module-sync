@@ -16,10 +16,16 @@ import (
 type AdoClients struct {
 	CoreClient core.Client
 	GitClient  git.Client
+	Token      string
+}
+
+type TokenResponse struct {
+	Token string `json:"token"`
 }
 
 func NewAdoClients(logger *zap.Logger, ctx context.Context) *AdoClients {
 	var connection *azuredevops.Connection
+	var token string
 
 	organizationUrl := config.AdoOrganizationUrl + config.AdoOrganization
 
@@ -56,6 +62,7 @@ func NewAdoClients(logger *zap.Logger, ctx context.Context) *AdoClients {
 	return &AdoClients{
 		CoreClient: coreClient,
 		GitClient:  gitClient,
+		Token:      token,
 	}
 }
 
