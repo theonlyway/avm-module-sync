@@ -17,7 +17,7 @@ var ProcessResourceModules bool
 var ProcessPatternModules bool
 var ProcessUtilityModules bool
 var DebugMode bool
-var CleanTempModulesDir bool
+var CleanTempDirs bool
 var UseLocalIdentity bool
 var ReadLocalCsvFile bool
 var PullRemoteTerraformRepository bool

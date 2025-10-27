@@ -22,7 +22,7 @@ func Main() {
 	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
 	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
 	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", true, "Process utility modules")
-	flag.BoolVar(&config.CleanTempModulesDir, "clean-temp", true, "Clean temporary modules directory before processing")
+	flag.BoolVar(&config.CleanTempDirs, "cleanup-temp-dirs", true, "Clean temporary directories before processing")
 	flag.StringVar(&config.AdoOrganization, "ado-organization", "", "The ADO organization")
 	flag.StringVar(&config.AdoProject, "ado-project", "", "The ADO project")
 	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
@@ -46,7 +46,7 @@ func Main() {
 
 	processor := avmmodules.ModuleProcessor{Logger: logger, SugaredLogger: sugaredLogger}
 
-	processor.CleanupTempRepos()
+	processor.CleanUpTempDirs()
 
 	ctx := context.Background()
 	clients := ado.NewAdoClients(logger, ctx)
@@ -59,8 +59,8 @@ func Main() {
 		os.Exit(1)
 	}
 	var webURL string
-	if links, ok := projectValue.Links.(map[string]interface{}); ok {
-		if web, ok := links["web"].(map[string]interface{}); ok {
+	if links, ok := projectValue.Links.(map[string]any); ok {
+		if web, ok := links["web"].(map[string]any); ok {
 			if href, ok := web["href"].(string); ok {
 				webURL = href
 			}
@@ -139,21 +139,5 @@ func Main() {
 		if err != nil {
 			sugaredLogger.Error("error processing utility modules:", zap.Error(err))
 		}
-	}
-}
-
-func validateRequiredFlags(logger *zap.Logger) {
-	var missingFlags []string
-	flag.VisitAll(func(f *flag.Flag) {
-		if f.Value.String() == "" {
-			missingFlags = append(missingFlags, f.Name)
-		}
-	})
-
-	if len(missingFlags) > 0 {
-		for _, flagName := range missingFlags {
-			logger.Error("Missing required flag", zap.String("flag", flagName))
-		}
-		os.Exit(1)
 	}
 }

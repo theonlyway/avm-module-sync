@@ -114,12 +114,13 @@ func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
 	}
 }
 
-func (p *ModuleProcessor) CleanupTempRepos() {
-	if !config.CleanTempModulesDir {
+func (p *ModuleProcessor) CleanUpTempDirs() {
+	if !config.CleanTempDirs {
 		return
 	}
-	p.Logger.Info("Cleaning up temporary repositories")
+	p.Logger.Info("Cleaning up temporary directories")
 	os.RemoveAll(config.TempAvmModuleRepoPath)
+	os.RemoveAll(config.TempSourceRepoPath)
 }
 
 func CloneRepo(repoURL string, destPath string) error {
