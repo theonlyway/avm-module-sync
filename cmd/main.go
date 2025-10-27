@@ -18,16 +18,17 @@ func Main() {
 	var sugaredLogger *zap.SugaredLogger
 
 	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
-	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
-	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", false, "Process utility modules")
-	flag.BoolVar(&config.CleanTempModulesDir, "clean-temp", false, "Clean temporary modules directory before processing")
+	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", true, "Process pattern modules")
+	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", true, "Process utility modules")
+	flag.BoolVar(&config.CleanTempModulesDir, "clean-temp", true, "Clean temporary modules directory before processing")
 	flag.StringVar(&config.AdoOrganization, "ado-organization", "", "The ADO organization")
 	flag.StringVar(&config.AdoProject, "ado-project", "", "The ADO project")
 	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
 	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token")
 	flag.BoolVar(&config.UseLocalIdentity, "use-local-identity", false, "Use the local identity")
 	flag.BoolVar(&config.ReadLocalCsvFile, "read-local-csv", true, "Read module CSV files from local disk instead of downloading")
-	flag.BoolVar(&config.DebugMode, "debug", true, "Enable debug mode")
+	flag.BoolVar(&config.PullRemoteTerraformRepository, "pull-remote-repo", true, "Pull the remote Terraform repository to get existing modules")
+	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
 	flag.Parse()
 
 	if config.DebugMode {
@@ -42,6 +43,8 @@ func Main() {
 	}
 
 	processor := avmmodules.ModuleProcessor{Logger: logger, SugaredLogger: sugaredLogger}
+
+	processor.CleanupTempRepos()
 
 	ctx := context.Background()
 	clients := ado.NewAdoClients(logger, ctx)
@@ -92,7 +95,7 @@ func Main() {
 
 	if config.ProcessPatternModules {
 		sugaredLogger.Infow("Processing pattern modules")
-		err := avmmodules.ProcessPatternModules(func(module avmmodules.PatternModulesStruct) {
+		err := processor.ProcessPatternModules(func(module avmmodules.PatternModulesStruct) {
 			sugaredLogger.Infow(
 				"processing pattern module",
 				"module", module.ModuleName,
@@ -107,7 +110,7 @@ func Main() {
 
 	if config.ProcessUtilityModules {
 		sugaredLogger.Infow("Processing utility modules")
-		err := avmmodules.ProcessUtilityModules(func(module avmmodules.UtilityModulesStruct) {
+		err := processor.ProcessUtilityModules(func(module avmmodules.UtilityModulesStruct) {
 			sugaredLogger.Infow(
 				"processing utility module",
 				"module", module.ModuleName,

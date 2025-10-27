@@ -12,10 +12,11 @@
             "mode": "auto",
             "program": "${workspaceFolder}/main.go",
             "args": [
-                "--ado-organization=placeholder",
-                "--ado-project=placeholder",
-                "--ado-repo=placeholder",
-                "--ado-pat=placeholder"
+                "--ado-organization=riotintodevops",
+                "--ado-project=Digital Products",
+                "--ado-repo=aw-testing-repo",
+                "--use-local-identity",
+                "--read-local-csv"
             ]
         }
     ]

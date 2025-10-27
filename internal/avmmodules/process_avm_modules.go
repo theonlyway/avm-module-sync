@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"sync"
 
 	"github.com/go-git/go-git/v6"
 	"github.com/theonlyway/avm-module-sync/internal/config"
@@ -24,36 +25,6 @@ type ModulesStruct struct {
 }
 
 var moduleNameRegex = regexp.MustCompile(`^(avm)-(res-)(.+)$`)
-
-func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
-	cleanupTempRepos(p)
-	modules, err := getModules()
-	if err != nil {
-		return err
-	}
-
-	for _, module := range modules.ResourceModules {
-		tempPath := config.TempRepoPath + "/resources/" + module.ModuleName
-		newModuleName := transformModuleName(module.ModuleName)
-		newPath := config.TempRepoPath + "/resources/" + newModuleName
-		p.Logger.Info("Transformed module name", zap.String("old", module.ModuleName), zap.String("new", newModuleName))
-
-		if _, err := os.Stat(tempPath); err == nil {
-			p.Logger.Warn("Temporary repository path exists", zap.String("path", tempPath))
-			removeGitFolder(p, tempPath)
-			renameFolders(p, tempPath, newPath)
-		} else if os.IsNotExist(err) {
-			cloneRepo(module.RepoURL, tempPath)
-			removeGitFolder(p, tempPath)
-			renameFolders(p, tempPath, newPath)
-			processFunc(module)
-		} else {
-			p.Logger.Error("Error checking temporary repository path", zap.String("path", tempPath), zap.Error(err))
-		}
-
-	}
-	return nil
-}
 
 func getModules() (*ModulesStruct, error) {
 	resourceModules, err := getResourceModules()
@@ -78,24 +49,47 @@ func getModules() (*ModulesStruct, error) {
 	}, nil
 }
 
-func ProcessPatternModules(processFunc func(PatternModulesStruct)) error {
-	modules, err := getPatternModules()
+func batchSlice[T any](items []T, batchSize int) [][]T {
+    var batches [][]T
+    for batchSize < len(items) {
+        items, batches = items[batchSize:], append(batches, items[0:batchSize:batchSize])
+    }
+    batches = append(batches, items)
+    return batches
+}
+
+func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
+	modules, err := getModules()
 	if err != nil {
 		return err
 	}
-	for _, module := range modules {
-		processFunc(module)
+	batches := batchSlice(modules.ResourceModules, config.CloneBatchSize)
+	for _, batch := range batches {
+		CloneResourceModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p)
 	}
 	return nil
 }
 
-func ProcessUtilityModules(processFunc func(UtilityModulesStruct)) error {
-	modules, err := getUtilityModules()
+func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesStruct)) error {
+	modules, err := getModules()
 	if err != nil {
 		return err
 	}
-	for _, module := range modules {
-		processFunc(module)
+	batches := batchSlice(modules.PatternModules, config.CloneBatchSize)
+	for _, batch := range batches {
+		CloneResourceModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p)
+	}
+	return nil
+}
+
+func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesStruct)) error {
+	modules, err := getModules()
+	if err != nil {
+		return err
+	}
+	batches := batchSlice(modules.UtilityModules, config.CloneBatchSize)
+	for _, batch := range batches {
+		CloneResourceModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p)
 	}
 	return nil
 }
@@ -119,7 +113,44 @@ func cloneRepo(repoURL string, destPath string) error {
 	return nil
 }
 
-func cleanupTempRepos(p *ModuleProcessor) {
+func CloneResourceModulesInBatches(modules []ResourceModulesStruct, destDir string, logger *zap.Logger, processFunc func(ResourceModulesStruct), processor *ModuleProcessor) {
+	var wg sync.WaitGroup
+	jobs := make(chan ResourceModulesStruct)
+
+	for range config.CloneBatchSize {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for module := range jobs {
+				tempPath := destDir + "/" + module.ModuleName
+				newModuleName := transformModuleName(module.ModuleName)
+				newPath := destDir + "/" + newModuleName
+				logger.Info("Transformed module name", zap.String("old", module.ModuleName), zap.String("new", newModuleName))
+
+				if _, err := os.Stat(tempPath); err == nil {
+					logger.Warn("Temporary repository path exists", zap.String("path", tempPath))
+					removeGitFolder(processor, tempPath)
+					renameFolders(processor, tempPath, newPath)
+				} else if os.IsNotExist(err) {
+					cloneRepo(module.RepoURL, tempPath)
+					removeGitFolder(processor, tempPath)
+					renameFolders(processor, tempPath, newPath)
+					processFunc(module)
+				} else {
+					logger.Error("Error checking temporary repository path", zap.String("path", tempPath), zap.Error(err))
+				}
+			}
+		}()
+	}
+
+	for _, module := range modules {
+		jobs <- module
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+func (p *ModuleProcessor) CleanupTempRepos() {
 	if !config.CleanTempModulesDir {
 		return
 	}
