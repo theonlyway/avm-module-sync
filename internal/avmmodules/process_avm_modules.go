@@ -14,7 +14,7 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, resourceNameTransformer)
 	}
 	for _, module := range modules.ResourceModules {
-		CommitModulesToGit(module, config.TempSourceRepoPath, resourceNameTransformer, p.Logger)
+		CommitAndPushModulesToGit(module, config.TempSourceRepoPath, resourceNameTransformer, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -30,7 +30,7 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, patternNameTransformer)
 	}
 	for _, module := range modules.PatternModules {
-		CommitModulesToGit(module, config.TempSourceRepoPath, resourceNameTransformer, p.Logger)
+		CommitAndPushModulesToGit(module, config.TempSourceRepoPath, resourceNameTransformer, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -46,7 +46,7 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, utilityNameTransformer)
 	}
 	for _, module := range modules.UtilityModules {
-		CommitModulesToGit(module, config.TempSourceRepoPath, utilityNameTransformer, p.Logger)
+		CommitAndPushModulesToGit(module, config.TempSourceRepoPath, utilityNameTransformer, p.Logger)
 		processFunc(module)
 	}
 

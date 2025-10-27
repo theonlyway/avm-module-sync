@@ -11,6 +11,7 @@ const (
 	LocalCsvPath              string = "./third_party/module-indexes"
 	RemoteTerraformRepository string = "https://riotintodevops.visualstudio.com/Digital%20Products/_git/terraform"
 	BatchSize                 int    = 10
+	DefaultBranchName         string = "main"
 )
 
 var ProcessResourceModules bool
