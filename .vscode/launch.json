@@ -4,7 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "Launch main.go",
             "type": "go",
@@ -16,7 +15,8 @@
                 "--ado-project=Digital Products",
                 "--ado-repo=aw-terraform-fork",
                 "--use-local-identity",
-                "--read-local-csv"
+                "--read-local-csv",
+                "--ado-pat=<pat>"
             ]
         }
     ]

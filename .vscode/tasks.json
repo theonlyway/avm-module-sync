@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run avm-sync-linux binary",
+            "type": "shell",
+            "command": "${workspaceFolder}/bin/avm-sync-linux",
+            "args": [
+                "--ado-organization=riotintodevops",
+                "--ado-project=Digital Products",
+                "--ado-repo=aw-terraform-fork",
+                "--use-local-identity",
+                "--read-local-csv",
+                "--ado-pat=<pat>"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+}
