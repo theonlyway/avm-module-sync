@@ -9,9 +9,12 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 	if err != nil {
 		return err
 	}
-	batches := batchSlice(modules.ResourceModules, config.CloneBatchSize)
+	batches := batchSlice(modules.ResourceModules, config.BatchSize)
 	for _, batch := range batches {
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, processFunc, p, resourceNameTransformer)
+	}
+	for _, module := range modules.ResourceModules {
+		CreateModuleBranch(module, config.TempSourceRepoPath, p.Logger, processFunc)
 	}
 	return nil
 }
@@ -21,7 +24,7 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 	if err != nil {
 		return err
 	}
-	batches := batchSlice(modules.PatternModules, config.CloneBatchSize)
+	batches := batchSlice(modules.PatternModules, config.BatchSize)
 	for _, batch := range batches {
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, processFunc, p, patternNameTransformer)
 	}
@@ -33,7 +36,7 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 	if err != nil {
 		return err
 	}
-	batches := batchSlice(modules.UtilityModules, config.CloneBatchSize)
+	batches := batchSlice(modules.UtilityModules, config.BatchSize)
 	for _, batch := range batches {
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, processFunc, p, utilityNameTransformer)
 	}

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
 )
@@ -146,7 +147,7 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 	var wg sync.WaitGroup
 	jobs := make(chan T)
 
-	for range config.CloneBatchSize {
+	for range config.BatchSize {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -177,4 +178,33 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 	}
 	close(jobs)
 	wg.Wait()
+}
+
+func CreateModuleBranch[T Module](module T, localRepoPath string, logger *zap.Logger, processFunc func(T)) {
+	branchName := "feat/avm-module-sync/" + module.GetModuleName()
+	branchErr := createModuleBranch(localRepoPath, branchName, logger)
+	if branchErr != nil {
+		logger.Error("Failed to create branch", zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(branchErr))
+	} else {
+		logger.Info("Created branch for module", zap.String("branch", branchName), zap.String("path", localRepoPath))
+	}
+	processFunc(module)
+}
+
+func createModuleBranch(repoPath string, branchName string, logger *zap.Logger) error {
+	logger.Info("Creating and checking out branch", zap.String("branch", branchName))
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return err
+	}
+	w, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+	// Create and checkout the branch
+	err = w.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(branchName),
+		Create: true,
+	})
+	return err
 }

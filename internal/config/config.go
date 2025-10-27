@@ -10,7 +10,7 @@ const (
 	AdoEnterpriseAppScope     string = AdoEnterpriseAppId + "/.default"
 	LocalCsvPath              string = "./third_party/module-indexes"
 	RemoteTerraformRepository string = "https://riotintodevops.visualstudio.com/Digital%20Products/_git/terraform"
-	CloneBatchSize            int    = 10
+	BatchSize                 int    = 10
 )
 
 var ProcessResourceModules bool
