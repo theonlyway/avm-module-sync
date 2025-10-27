@@ -27,3 +27,7 @@ var AdoOrganization string
 var AdoProject string
 var AdoRepo string
 var AdoPat string
+
+var ModuleSyncAuthorName string
+var ModuleSyncAuthorEmail string
+var ModuleSyncSourceRepoChildPath string

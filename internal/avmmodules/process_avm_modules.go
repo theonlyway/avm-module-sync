@@ -11,10 +11,11 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 	}
 	batches := batchSlice(modules.ResourceModules, config.BatchSize)
 	for _, batch := range batches {
-		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, processFunc, p, resourceNameTransformer)
+		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, resourceNameTransformer)
 	}
 	for _, module := range modules.ResourceModules {
-		CreateModuleBranch(module, config.TempSourceRepoPath, p.Logger, processFunc)
+		CommitModulesToGit(module, config.TempSourceRepoPath, resourceNameTransformer, p.Logger)
+		processFunc(module)
 	}
 	return nil
 }
@@ -26,7 +27,11 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 	}
 	batches := batchSlice(modules.PatternModules, config.BatchSize)
 	for _, batch := range batches {
-		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, processFunc, p, patternNameTransformer)
+		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, patternNameTransformer)
+	}
+	for _, module := range modules.PatternModules {
+		CommitModulesToGit(module, config.TempSourceRepoPath, resourceNameTransformer, p.Logger)
+		processFunc(module)
 	}
 	return nil
 }
@@ -38,7 +43,12 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 	}
 	batches := batchSlice(modules.UtilityModules, config.BatchSize)
 	for _, batch := range batches {
-		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, processFunc, p, utilityNameTransformer)
+		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, utilityNameTransformer)
 	}
+	for _, module := range modules.UtilityModules {
+		CommitModulesToGit(module, config.TempSourceRepoPath, utilityNameTransformer, p.Logger)
+		processFunc(module)
+	}
+
 	return nil
 }

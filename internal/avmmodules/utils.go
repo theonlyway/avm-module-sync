@@ -5,9 +5,13 @@ import (
 	"os"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/object"
+	"github.com/go-git/go-git/v6/plumbing/transport/http"
+	cp "github.com/otiai10/copy"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
 )
@@ -143,7 +147,7 @@ func CloneRepo(repoURL string, destPath string) error {
 	return nil
 }
 
-func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Logger, processFunc func(T), processor *ModuleProcessor, nameTransformer ModuleNameTransformer) {
+func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Logger, processor *ModuleProcessor, nameTransformer ModuleNameTransformer) {
 	var wg sync.WaitGroup
 	jobs := make(chan T)
 
@@ -165,7 +169,6 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 					CloneRepo(module.GetRepoURL(), tempPath)
 					removeGitFolder(processor, tempPath)
 					renameFolders(processor, tempPath, newPath)
-					processFunc(module)
 				} else {
 					logger.Error("Error checking temporary repository path", zap.String("path", tempPath), zap.Error(err))
 				}
@@ -180,31 +183,87 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 	wg.Wait()
 }
 
-func CreateModuleBranch[T Module](module T, localRepoPath string, logger *zap.Logger, processFunc func(T)) {
-	branchName := "feat/avm-module-sync/" + module.GetModuleName()
-	branchErr := createModuleBranch(localRepoPath, branchName, logger)
-	if branchErr != nil {
-		logger.Error("Failed to create branch", zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(branchErr))
-	} else {
-		logger.Info("Created branch for module", zap.String("branch", branchName), zap.String("path", localRepoPath))
-	}
-	processFunc(module)
+func CommitModulesToGit[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) {
+	copyModuleToBranch(module, localRepoPath, nameTransformer, logger)
+	commitAndPushModulesToGit(module, localRepoPath, nameTransformer, logger)
 }
 
-func createModuleBranch(repoPath string, branchName string, logger *zap.Logger) error {
-	logger.Info("Creating and checking out branch", zap.String("branch", branchName))
-	repo, err := git.PlainOpen(repoPath)
+func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) {
+	var sourcePath string
+	logger.Info("Copying module to branch", zap.String("module", module.GetModuleName()), zap.String("path", localRepoPath))
+	modulePath := config.TempAvmModuleRepoPath + "/" + nameTransformer(module.GetModuleName())
+	if config.ModuleSyncSourceRepoChildPath != "" {
+		sourcePath = localRepoPath + "/" + config.ModuleSyncSourceRepoChildPath + "/" + nameTransformer(module.GetModuleName())
+	} else {
+		sourcePath = localRepoPath + "/" + nameTransformer(module.GetModuleName())
+	}
+	opt := cp.Options{
+		NumOfWorkers: int64(config.BatchSize),
+	}
+	err := cp.Copy(modulePath, sourcePath, opt)
 	if err != nil {
+		logger.Error("Error copying module to branch", zap.String("modulePath", modulePath), zap.String("sourcePath", sourcePath), zap.Error(err))
+	}
+}
+
+func commitAndPushModulesToGit[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) error {
+	logger.Info("Commiting git changes", zap.String("module", module.GetModuleName()), zap.String("path", localRepoPath))
+	branchName := "feat/avm-module-sync/" + nameTransformer(module.GetModuleName())
+	authorName := config.ModuleSyncAuthorName
+	authorEmail := config.ModuleSyncAuthorEmail
+	moduleName := nameTransformer(module.GetModuleName())
+	commitMsg := "feat(module): Syncing AVM module (" + moduleName + ") from source repository"
+	sourcePath := config.TempSourceRepoPath
+	repo, err := git.PlainOpen(sourcePath)
+	if err != nil {
+		logger.Error("Failed to open repo", zap.String("module", moduleName), zap.String("path", localRepoPath), zap.Error(err))
 		return err
 	}
 	w, err := repo.Worktree()
 	if err != nil {
+		logger.Error("Failed to get worktree", zap.String("module", moduleName), zap.String("path", localRepoPath), zap.Error(err))
 		return err
 	}
 	// Create and checkout the branch
+	logger.Info("Creating and checking out branch", zap.String("module", moduleName), zap.String("branch", branchName))
 	err = w.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.NewBranchReferenceName(branchName),
 		Create: true,
 	})
-	return err
+	if err != nil {
+		logger.Error("Failed to create branch", zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
+		return err
+	} else {
+		logger.Info("Created branch for module", zap.String("branch", branchName), zap.String("path", localRepoPath))
+	}
+	// Add all changes
+	logger.Info("Adding changes", zap.String("module", moduleName))
+	err = w.AddWithOptions(&git.AddOptions{All: true})
+	if err != nil {
+		logger.Error("Failed to add changes", zap.String("module", moduleName), zap.Error(err))
+	}
+	// Commit
+	logger.Info("Commiting changes", zap.String("module", moduleName), zap.String("commit_msg", commitMsg))
+	_, err = w.Commit(commitMsg, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  authorName,
+			Email: authorEmail,
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		logger.Error("Failed to commit changes", zap.String("module", moduleName), zap.Error(err))
+		return err
+	}
+	// Push
+	logger.Info("Pushing changes to origin", zap.String("module", moduleName))
+	err = repo.Push(&git.PushOptions{
+		RemoteName: "origin",
+		Auth:       &http.BasicAuth{Username: "anything", Password: config.AdoPat},
+	})
+	if err != nil {
+		logger.Error("Failed to push changes to origin", zap.String("module", moduleName), zap.Error(err))
+		return err
+	}
+	return nil
 }

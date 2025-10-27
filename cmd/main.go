@@ -27,6 +27,9 @@ func Main() {
 	flag.StringVar(&config.AdoProject, "ado-project", "", "The ADO project")
 	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
 	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token")
+	flag.StringVar(&config.ModuleSyncAuthorName, "module-sync-author-name", "AVM Module Sync", "The author name for commits")
+	flag.StringVar(&config.ModuleSyncAuthorEmail, "module-sync-author-email", "avm-module-sync@example.com", "The author email for commits")
+	flag.StringVar(&config.ModuleSyncSourceRepoChildPath, "module-sync-source-repo-child-path", "", "The child path within the source repo where modules are to be copied")
 	flag.BoolVar(&config.UseLocalIdentity, "use-local-identity", false, "Use the local identity")
 	flag.BoolVar(&config.ReadLocalCsvFile, "read-local-csv", true, "Read module CSV files from local disk instead of downloading")
 	flag.BoolVar(&config.PullRemoteTerraformRepository, "pull-remote-repo", true, "Pull the remote Terraform repository to get existing modules")
@@ -100,7 +103,7 @@ func Main() {
 		sugaredLogger.Infow("Processing resource modules")
 		err := processor.ProcessResourceModules(func(module avmmodules.ResourceModulesStruct) {
 			sugaredLogger.Infow(
-				"processing resource module",
+				"Processed resource module",
 				"module", module.ModuleName,
 				"status", module.ModuleStatus,
 				"firstPublishedIn", module.FirstPublishedIn,
@@ -115,7 +118,7 @@ func Main() {
 		sugaredLogger.Infow("Processing pattern modules")
 		err := processor.ProcessPatternModules(func(module avmmodules.PatternModulesStruct) {
 			sugaredLogger.Infow(
-				"processing pattern module",
+				"Processed pattern module",
 				"module", module.ModuleName,
 				"status", module.ModuleStatus,
 				"firstPublishedIn", module.FirstPublishedIn,
@@ -130,7 +133,7 @@ func Main() {
 		sugaredLogger.Infow("Processing utility modules")
 		err := processor.ProcessUtilityModules(func(module avmmodules.UtilityModulesStruct) {
 			sugaredLogger.Infow(
-				"processing utility module",
+				"Processed utility module",
 				"module", module.ModuleName,
 				"status", module.ModuleStatus,
 				"firstPublishedIn", module.FirstPublishedIn,
