@@ -11,7 +11,49 @@ import (
 	"go.uber.org/zap"
 )
 
-const ()
+type Module interface {
+    GetRepoURL() string
+    GetModuleName() string
+}
+
+func (m ResourceModulesStruct) GetRepoURL() string    { return m.RepoURL }
+func (m PatternModulesStruct) GetRepoURL() string     { return m.RepoURL }
+func (m UtilityModulesStruct) GetRepoURL() string     { return m.RepoURL }
+func (m ResourceModulesStruct) GetModuleName() string { return m.ModuleName }
+func (m PatternModulesStruct) GetModuleName() string  { return m.ModuleName }
+func (m UtilityModulesStruct) GetModuleName() string  { return m.ModuleName }
+
+type ModuleNameTransformer func(string) string
+
+func resourceNameTransformer(name string) string {
+	var resourceRegex = regexp.MustCompile(`^(avm)-(res-)(.+)$`)
+	if matches := resourceRegex.FindStringSubmatch(name); len(matches) == 4 {
+		return "rvm-" + matches[2] + "azurerm-" + matches[3]
+	}
+	return name
+}
+
+func patternNameTransformer(name string) string {
+	var resourceRegex = regexp.MustCompile(`^(avm)-(ptn-)(.+)$`)
+	if matches := resourceRegex.FindStringSubmatch(name); len(matches) == 4 {
+		re := regexp.MustCompile(`^avm-(ptn)-(.*)$`)
+		if matches := re.FindStringSubmatch(name); len(matches) == 3 {
+			return "rvm-pat-azurerm-" + matches[2]
+		}
+	}
+	return name
+}
+
+func utilityNameTransformer(name string) string {
+	var resourceRegex = regexp.MustCompile(`^(avm)-(utl-)(.+)$`)
+	if matches := resourceRegex.FindStringSubmatch(name); len(matches) == 4 {
+		re := regexp.MustCompile(`^avm-(utl)-(.*)$`)
+		if matches := re.FindStringSubmatch(name); len(matches) == 3 {
+			return "rvm-" + matches[1] + "-azurerm-" + matches[2]
+		}
+	}
+	return name
+}
 
 type ModuleProcessor struct {
 	Logger        *zap.Logger
@@ -23,8 +65,6 @@ type ModulesStruct struct {
 	PatternModules  []PatternModulesStruct
 	UtilityModules  []UtilityModulesStruct
 }
-
-var moduleNameRegex = regexp.MustCompile(`^(avm)-(res-)(.+)$`)
 
 func getModules() (*ModulesStruct, error) {
 	resourceModules, err := getResourceModules()
@@ -65,7 +105,7 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 	}
 	batches := batchSlice(modules.ResourceModules, config.CloneBatchSize)
 	for _, batch := range batches {
-		CloneResourceModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p)
+		CloneModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p, resourceNameTransformer)
 	}
 	return nil
 }
@@ -77,7 +117,7 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 	}
 	batches := batchSlice(modules.PatternModules, config.CloneBatchSize)
 	for _, batch := range batches {
-		CloneResourceModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p)
+		CloneModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p, patternNameTransformer)
 	}
 	return nil
 }
@@ -89,7 +129,7 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 	}
 	batches := batchSlice(modules.UtilityModules, config.CloneBatchSize)
 	for _, batch := range batches {
-		CloneResourceModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p)
+		CloneModulesInBatches(batch, config.TempRepoPath, p.Logger, processFunc, p, utilityNameTransformer)
 	}
 	return nil
 }
@@ -113,26 +153,26 @@ func cloneRepo(repoURL string, destPath string) error {
 	return nil
 }
 
-func CloneResourceModulesInBatches(modules []ResourceModulesStruct, destDir string, logger *zap.Logger, processFunc func(ResourceModulesStruct), processor *ModuleProcessor) {
+func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Logger, processFunc func(T), processor *ModuleProcessor, nameTransformer ModuleNameTransformer) {
 	var wg sync.WaitGroup
-	jobs := make(chan ResourceModulesStruct)
+	jobs := make(chan T)
 
-	for range config.CloneBatchSize {
+	for i := 0; i < config.CloneBatchSize; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for module := range jobs {
-				tempPath := destDir + "/" + module.ModuleName
-				newModuleName := transformModuleName(module.ModuleName)
+				tempPath := destDir + "/" + module.GetModuleName()
+				newModuleName := nameTransformer(module.GetModuleName())
 				newPath := destDir + "/" + newModuleName
-				logger.Info("Transformed module name", zap.String("old", module.ModuleName), zap.String("new", newModuleName))
+				logger.Info("Transformed module name", zap.String("old", module.GetModuleName()), zap.String("new", newModuleName))
 
 				if _, err := os.Stat(tempPath); err == nil {
 					logger.Warn("Temporary repository path exists", zap.String("path", tempPath))
 					removeGitFolder(processor, tempPath)
 					renameFolders(processor, tempPath, newPath)
 				} else if os.IsNotExist(err) {
-					cloneRepo(module.RepoURL, tempPath)
+					cloneRepo(module.GetRepoURL(), tempPath)
 					removeGitFolder(processor, tempPath)
 					renameFolders(processor, tempPath, newPath)
 					processFunc(module)
@@ -162,14 +202,6 @@ func removeGitFolder(p *ModuleProcessor, path string) {
 	p.Logger.Info("Removing .git folder from", zap.String("path", path))
 	gitPath := path + "/.git"
 	os.RemoveAll(gitPath)
-}
-
-func transformModuleName(name string) string {
-	// Replace 'avm' with 'rvm' at the start, and insert 'azurerm' after 'res-'
-	if matches := moduleNameRegex.FindStringSubmatch(name); len(matches) == 4 {
-		return "rvm-" + matches[2] + "azurerm-" + matches[3]
-	}
-	return name
 }
 
 func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {

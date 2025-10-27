@@ -18,7 +18,7 @@ func Main() {
 	var sugaredLogger *zap.SugaredLogger
 
 	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
-	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", true, "Process pattern modules")
+	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
 	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", true, "Process utility modules")
 	flag.BoolVar(&config.CleanTempModulesDir, "clean-temp", true, "Clean temporary modules directory before processing")
 	flag.StringVar(&config.AdoOrganization, "ado-organization", "", "The ADO organization")
