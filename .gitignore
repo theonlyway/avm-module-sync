@@ -31,4 +31,5 @@ go.work.sum
 # .idea/
 # .vscode/
 bin/
-*modules/
+avm_modules/
+source_repo/

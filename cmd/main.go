@@ -5,6 +5,8 @@ import (
 	"flag"
 	"os"
 
+	gogit "github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing/transport/http"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/core"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/git"
 	"github.com/theonlyway/avm-module-sync/internal/ado"
@@ -77,7 +79,22 @@ func Main() {
 	}
 	logger.Debug("Repository", zap.Any("response", repoValue))
 	logger.Info("Looked up repository", zap.String("repo", *repoValue.Name), zap.Any("id", *repoValue.Id), zap.String("url", *repoValue.WebUrl))
-	logger.Info("Cloning source repo", zap.String("remote", *repoValue.WebUrl))
+
+	if config.PullRemoteTerraformRepository {
+		logger.Info("Cloning source repo", zap.String("remote", *repoValue.WebUrl))
+		_, err = gogit.PlainClone(config.TempSourceRepoPath, &gogit.CloneOptions{
+			URL:      *repoValue.WebUrl,
+			Progress: os.Stdout,
+			Auth: &http.BasicAuth{
+				Username: "anything", // can be anything except blank
+				Password: config.AdoPat,
+			},
+		})
+		if err != nil {
+			logger.Error("Failed to clone source repo", zap.Error(err))
+			os.Exit(1)
+		}
+	}
 
 	if config.ProcessResourceModules {
 		sugaredLogger.Infow("Processing resource modules")
