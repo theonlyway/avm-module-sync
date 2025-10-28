@@ -1,6 +1,7 @@
 package avmmodules
 
 import (
+	"context"
 	"io"
 	"os"
 	"regexp"
@@ -11,7 +12,10 @@ import (
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/transport/http"
+	"github.com/google/uuid"
+	adogit "github.com/microsoft/azure-devops-go-api/azuredevops/git"
 	cp "github.com/otiai10/copy"
+	"github.com/theonlyway/avm-module-sync/internal/ado"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
 )
@@ -19,6 +23,10 @@ import (
 type ModuleProcessor struct {
 	Logger        *zap.Logger
 	SugaredLogger *zap.SugaredLogger
+	Clients       *ado.AdoClients
+	Context       context.Context
+	Project       string
+	RepoId        *uuid.UUID
 }
 
 type ModulesStruct struct {
@@ -119,11 +127,11 @@ func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
 	}
 }
 
-func (p *ModuleProcessor) CleanUpTempDirs() {
+func CleanUpTempDirs(logger *zap.Logger) {
 	if !config.CleanTempDirs {
 		return
 	}
-	p.Logger.Info("Cleaning up temporary directories")
+	logger.Info("Cleaning up temporary directories")
 	os.RemoveAll(config.TempAvmModuleRepoPath)
 	os.RemoveAll(config.TempSourceRepoPath)
 }
@@ -202,12 +210,12 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 	}
 }
 
-func CommitAndPushModulesToGit[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) error {
+func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) error {
 	branchName := "feat/avm-module-sync/" + nameTransformer(module.GetModuleName())
 	authorName := config.ModuleSyncAuthorName
 	authorEmail := config.ModuleSyncAuthorEmail
 	moduleName := nameTransformer(module.GetModuleName())
-	commitMsg := "feat(module): Syncing AVM module (" + moduleName + ") from source repository"
+	commitMsg := "feat(module): Syncing AVM module " + moduleName + " from source repository"
 	sourcePath := config.TempSourceRepoPath
 	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)
 	remoteRef := plumbing.ReferenceName("refs/remotes/origin/" + branchName)
@@ -316,6 +324,17 @@ func CommitAndPushModulesToGit[T Module](module T, localRepoPath string, nameTra
 		logger.Error("Failed to push changes to origin", zap.String("module", moduleName), zap.Error(err))
 		return err
 	}
+	// Create pull request
+	title := "feat(module): Syncing AVM module " + moduleName + " from source repository"
+	description := "This is an automated pull request to sync the " + moduleName + " module from the source AVM repository " + module.GetRepoURL()
+	sourceRef := "refs/heads/" + branchName
+	targetRef := "refs/heads/" + config.DefaultBranchName
+	pr, err := createPullRequest(clients.GitClient, ctx, repoId, project, sourceRef, targetRef, title, description)
+	if err != nil {
+		logger.Error("Failed to create pull request", zap.String("module", moduleName), zap.Error(err))
+		return err
+	}
+	logger.Info("Created pull request", zap.String("module", moduleName), zap.Int("prId", *pr.PullRequestId))
 	return nil
 }
 
@@ -326,4 +345,20 @@ func remoteBranchExists(repo *git.Repository, remoteRef plumbing.ReferenceName, 
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func createPullRequest(client adogit.Client, ctx context.Context, repoId *uuid.UUID, project string, sourceBranch, targetBranch, title, description string) (*adogit.GitPullRequest, error) {
+	repoIdStr := repoId.String()
+	pr := adogit.GitPullRequest{
+		Title:         &title,
+		Description:   &description,
+		SourceRefName: &sourceBranch,
+		TargetRefName: &targetBranch,
+	}
+	args := adogit.CreatePullRequestArgs{
+		GitPullRequestToCreate: &pr,
+		RepositoryId:           &repoIdStr,
+		Project:                &project,
+	}
+	return client.CreatePullRequest(ctx, args)
 }

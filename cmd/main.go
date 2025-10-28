@@ -46,13 +46,9 @@ func Main() {
 		sugaredLogger = logger.Sugar()
 		defer logger.Sync()
 	}
-
-	processor := avmmodules.ModuleProcessor{Logger: logger, SugaredLogger: sugaredLogger}
-
-	processor.CleanUpTempDirs()
-
 	ctx := context.Background()
 	clients := ado.NewAdoClients(logger, ctx)
+	avmmodules.CleanUpTempDirs(logger)
 
 	projectValue, err := clients.CoreClient.GetProject(ctx, core.GetProjectArgs{
 		ProjectId: &config.AdoProject,
@@ -97,6 +93,15 @@ func Main() {
 			logger.Error("Failed to clone source repo", zap.Error(err))
 			os.Exit(1)
 		}
+	}
+
+	processor := avmmodules.ModuleProcessor{
+		Logger:        logger,
+		SugaredLogger: sugaredLogger,
+		Clients:       clients,
+		Context:       ctx,
+		Project:       *projectValue.Name,
+		RepoId:        repoValue.Id,
 	}
 
 	if config.ProcessResourceModules {
