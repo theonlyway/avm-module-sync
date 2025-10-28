@@ -144,4 +144,5 @@ func Main() {
 		}
 	}
 
+	logger.Info("AVM module sync complete")
 }

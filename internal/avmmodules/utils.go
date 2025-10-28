@@ -246,7 +246,7 @@ func CommitAndPushModulesToGit[T Module](module T, localRepoPath string, nameTra
 		logger.Info("Branch already exists remotely", zap.String("branch", branchName), zap.String("path", localRepoPath))
 		err = w.Checkout(&git.CheckoutOptions{
 			Branch: remoteRef,
-			Force: true,
+			Force:  true,
 		})
 		if err != nil {
 			logger.Error("Failed to create branch", zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
@@ -269,10 +269,16 @@ func CommitAndPushModulesToGit[T Module](module T, localRepoPath string, nameTra
 	}
 
 	copyModuleToBranch(module, localRepoPath, nameTransformer, logger)
+
 	logger.Info("Checking git status", zap.String("module", moduleName))
 	status, err := w.Status()
 	if err != nil {
+		logger.Error("Failed to get git status", zap.String("module", moduleName), zap.Error(err))
 		return err
+	}
+	// Log all changed files and their status
+	for file, fileStatus := range status {
+		logger.Info("Git file status", zap.String("module", moduleName), zap.String("file", file), zap.String("worktree", string(fileStatus.Worktree)), zap.String("staging", string(fileStatus.Staging)))
 	}
 	if status.IsClean() {
 		logger.Info("No changes to commit", zap.String("module", moduleName))
