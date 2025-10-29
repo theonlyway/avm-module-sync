@@ -13,7 +13,7 @@
             "args": [
                 "--ado-organization=riotintodevops",
                 "--ado-project=Digital Products",
-                "--ado-repo=aw-terraform-fork",
+                "--ado-repo-id=6ba160f7-758a-40f1-b25f-1ab237eb27b3",
                 "--use-local-identity",
                 "--read-local-csv",
                 "--ado-pat=<pat>"

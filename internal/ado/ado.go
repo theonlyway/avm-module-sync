@@ -30,9 +30,11 @@ func NewAdoClients(logger *zap.Logger, ctx context.Context) *AdoClients {
 	organizationUrl := config.AdoOrganizationUrl + config.AdoOrganization
 
 	// Create a connection to your organization
-	if config.AdoPat != "" && !config.UseLocalIdentity {
-		connection = azuredevops.NewPatConnection(organizationUrl, config.AdoPat)
+	if config.AdoSessionToken != "" && !config.UseLocalIdentity {
+		logger.Info("Creating ADO client with session token")
+		connection = azuredevops.NewPatConnection(organizationUrl, config.AdoSessionToken)
 	} else if config.UseLocalIdentity {
+		logger.Info("Using local identity")
 		token, err := getAzureAccessToken(logger, config.AdoEnterpriseAppScope)
 		if err != nil {
 			logger.Error("Error", zap.Error(err))
@@ -40,6 +42,9 @@ func NewAdoClients(logger *zap.Logger, ctx context.Context) *AdoClients {
 		}
 		logger.Debug("Token", zap.String("token", token))
 		connection = azuredevops.NewPatConnection(organizationUrl, token)
+	} else {
+		logger.Error("Unknown auth mechanism")
+		panic("Unknown auth mechanism")
 	}
 
 	// Ensure connection is initialized

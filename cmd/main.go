@@ -3,17 +3,39 @@ package cmd
 import (
 	"context"
 	"flag"
-	"os"
 
-	gogit "github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing/transport/http"
-	"github.com/microsoft/azure-devops-go-api/azuredevops/core"
-	"github.com/microsoft/azure-devops-go-api/azuredevops/git"
+	"github.com/google/uuid"
 	"github.com/theonlyway/avm-module-sync/internal/ado"
 	"github.com/theonlyway/avm-module-sync/internal/avmmodules"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
 )
+
+func maskToken(token string) string {
+	if token == "" {
+		return "<empty>"
+	}
+	if len(token) <= 8 {
+		return "***"
+	}
+	return token[:4] + "..." + token[len(token)-4:]
+}
+
+func logFlags(logger *zap.SugaredLogger) {
+	sensitiveFlags := map[string]bool{
+		"ado-session-token": true,
+		"ado-pat":           true,
+	}
+
+	logger.Info("Configuration flags:")
+	flag.VisitAll(func(f *flag.Flag) {
+		value := f.Value.String()
+		if sensitiveFlags[f.Name] && value != "" {
+			value = maskToken(value)
+		}
+		logger.Infof("  --%s = %s", f.Name, value)
+	})
+}
 
 func Main() {
 	var logger *zap.Logger
@@ -22,17 +44,20 @@ func Main() {
 	flag.BoolVar(&config.ProcessResourceModules, "process-resource", true, "Process resource modules")
 	flag.BoolVar(&config.ProcessPatternModules, "process-pattern", false, "Process pattern modules")
 	flag.BoolVar(&config.ProcessUtilityModules, "process-utility", true, "Process utility modules")
-	flag.BoolVar(&config.CleanTempDirs, "cleanup-temp-dirs", true, "Clean temporary directories before processing")
+	flag.BoolVar(&config.CleanTempDirs, "cleanup-temp-dirs", false, "Clean temporary directories before processing")
 	flag.StringVar(&config.AdoOrganization, "ado-organization", "", "The ADO organization")
 	flag.StringVar(&config.AdoProject, "ado-project", "", "The ADO project")
-	flag.StringVar(&config.AdoRepo, "ado-repo", "", "The ADO repository")
-	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token")
+	flag.StringVar(&config.AdoRepoId, "ado-repo-id", "", "The ADO repository ID")
+	flag.StringVar(&config.AdoSessionToken, "ado-session-token", "", "The ADO session token. The session token is used for API calls")
+	flag.StringVar(&config.AdoPat, "ado-pat", "", "The ADO personal access token. The PAT is used for git operations if the pipeline isn't automatically confgiruing the git credentials")
 	flag.StringVar(&config.ModuleSyncAuthorName, "module-sync-author-name", "AVM Module Sync", "The author name for commits")
 	flag.StringVar(&config.ModuleSyncAuthorEmail, "module-sync-author-email", "avm-module-sync@example.com", "The author email for commits")
 	flag.StringVar(&config.ModuleSyncSourceRepoChildPath, "module-sync-source-repo-child-path", "", "The child path within the source repo where modules are to be copied")
 	flag.BoolVar(&config.UseLocalIdentity, "use-local-identity", false, "Use the local identity")
-	flag.BoolVar(&config.ReadLocalCsvFile, "read-local-csv", true, "Read module CSV files from local disk instead of downloading")
+	flag.BoolVar(&config.ReadLocalCsvFile, "read-local-csv", false, "Read module CSV files from local disk instead of downloading")
 	flag.BoolVar(&config.PullRemoteTerraformRepository, "pull-remote-repo", true, "Pull the remote Terraform repository to get existing modules")
+	flag.StringVar(&config.TempAvmModuleRepoPath, "temp-avm-module-repo-path", "./avm_modules", "The temporary path for the AVM module repository")
+	flag.StringVar(&config.SourceRepoPath, "source-repo-path", "", "The path to copy the AVM modules into")
 	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
 	flag.Parse()
 
@@ -46,53 +71,18 @@ func Main() {
 		sugaredLogger = logger.Sugar()
 		defer logger.Sync()
 	}
+	if config.DebugMode {
+		sugaredLogger.Info("Debug mode is enabled")
+	}
+	logFlags(sugaredLogger)
+	logger.Info("Starting AVM module sync")
 	ctx := context.Background()
 	clients := ado.NewAdoClients(logger, ctx)
 	avmmodules.CleanUpTempDirs(logger)
 
-	projectValue, err := clients.CoreClient.GetProject(ctx, core.GetProjectArgs{
-		ProjectId: &config.AdoProject,
-	})
-	if err != nil {
-		logger.Error("Failed to get project", zap.Error(err))
-		os.Exit(1)
-	}
-	var webURL string
-	if links, ok := projectValue.Links.(map[string]any); ok {
-		if web, ok := links["web"].(map[string]any); ok {
-			if href, ok := web["href"].(string); ok {
-				webURL = href
-			}
-		}
-	}
-	logger.Debug("Project", zap.Any("response", projectValue))
-	logger.Info("Looked up project", zap.String("project", *projectValue.Name), zap.Any("id", *projectValue.Id), zap.String("url", webURL))
-
-	repoValue, err := clients.GitClient.GetRepository(ctx, git.GetRepositoryArgs{
-		RepositoryId: &config.AdoRepo,
-		Project:      projectValue.Name,
-	})
-	if err != nil {
-		logger.Error("Failed to get repository", zap.Error(err))
-		os.Exit(1)
-	}
-	logger.Debug("Repository", zap.Any("response", repoValue))
-	logger.Info("Looked up repository", zap.String("repo", *repoValue.Name), zap.Any("id", *repoValue.Id), zap.String("url", *repoValue.WebUrl))
-
-	if config.PullRemoteTerraformRepository {
-		logger.Info("Cloning source repo", zap.String("remote", *repoValue.WebUrl))
-		_, err = gogit.PlainClone(config.TempSourceRepoPath, &gogit.CloneOptions{
-			URL:      *repoValue.WebUrl,
-			Progress: os.Stdout,
-			Auth: &http.BasicAuth{
-				Username: "anything", // can be anything except blank
-				Password: config.AdoPat,
-			},
-		})
-		if err != nil {
-			logger.Error("Failed to clone source repo", zap.Error(err))
-			os.Exit(1)
-		}
+	var repoId uuid.UUID
+	if config.AdoRepoId != "" {
+		repoId = uuid.MustParse(config.AdoRepoId)
 	}
 
 	processor := avmmodules.ModuleProcessor{
@@ -100,8 +90,8 @@ func Main() {
 		SugaredLogger: sugaredLogger,
 		Clients:       clients,
 		Context:       ctx,
-		Project:       *projectValue.Name,
-		RepoId:        repoValue.Id,
+		Project:       config.AdoProject,
+		RepoId:        &repoId,
 	}
 
 	if config.ProcessResourceModules {

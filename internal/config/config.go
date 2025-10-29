@@ -1,8 +1,6 @@
 package config
 
 const (
-	TempAvmModuleRepoPath     string = "./avm_modules"
-	TempSourceRepoPath        string = "./source_repo"
 	ResourceModulesUrl        string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformResourceModules.csv"
 	PatternModulesUrl         string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformPatternModules.csv"
 	UtilityModulesUrl         string = "https://raw.githubusercontent.com/Azure/Azure-Verified-Modules/refs/heads/main/docs/static/module-indexes/TerraformUtilityModules.csv"
@@ -26,9 +24,13 @@ var PullRemoteTerraformRepository bool
 var AdoOrganizationUrl string = "https://dev.azure.com/"
 var AdoOrganization string
 var AdoProject string
-var AdoRepo string
+var AdoRepoId string
+var AdoSessionToken string
 var AdoPat string
 
 var ModuleSyncAuthorName string
 var ModuleSyncAuthorEmail string
 var ModuleSyncSourceRepoChildPath string
+
+var TempAvmModuleRepoPath string
+var SourceRepoPath string

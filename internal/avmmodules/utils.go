@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/exec"
 	"regexp"
 	"sync"
 	"time"
@@ -133,7 +134,7 @@ func CleanUpTempDirs(logger *zap.Logger) {
 	}
 	logger.Info("Cleaning up temporary directories")
 	os.RemoveAll(config.TempAvmModuleRepoPath)
-	os.RemoveAll(config.TempSourceRepoPath)
+	os.RemoveAll(config.SourceRepoPath)
 }
 
 func CloneRepo(repoURL string, destPath string) error {
@@ -216,7 +217,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	authorEmail := config.ModuleSyncAuthorEmail
 	moduleName := nameTransformer(module.GetModuleName())
 	commitMsg := "feat(module): Syncing AVM module " + moduleName + " from source repository"
-	sourcePath := config.TempSourceRepoPath
+	sourcePath := config.SourceRepoPath
 	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)
 	remoteRef := plumbing.ReferenceName("refs/remotes/origin/" + branchName)
 	repo, err := git.PlainOpen(sourcePath)
@@ -232,17 +233,38 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		return err
 	}
 
+	// Ensure local branch exists before checking out
+	// In ADO pipelines, repo may be in detached HEAD state
 	logger.Info("Checking out default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()))
+	_, err = repo.Reference(defaultBranchName, false)
+	if err == plumbing.ErrReferenceNotFound {
+		// Local branch doesn't exist, create it from remote
+		logger.Info("Local default branch not found, creating from remote", zap.String("module", moduleName))
+		remoteDefaultRef := plumbing.ReferenceName("refs/remotes/origin/" + config.DefaultBranchName)
+		remoteRef, err := repo.Reference(remoteDefaultRef, true)
+		if err != nil {
+			logger.Error("Failed to get remote default branch reference", zap.String("branch", remoteDefaultRef.String()), zap.Error(err))
+			return err
+		}
+		// Create local branch pointing to same commit as remote
+		headRef := plumbing.NewHashReference(defaultBranchName, remoteRef.Hash())
+		err = repo.Storer.SetReference(headRef)
+		if err != nil {
+			logger.Error("Failed to create local default branch", zap.String("branch", defaultBranchName.String()), zap.Error(err))
+			return err
+		}
+		logger.Info("Created local default branch", zap.String("branch", defaultBranchName.String()), zap.String("commit", remoteRef.Hash().String()))
+	}
+
 	err = w.Checkout(&git.CheckoutOptions{
 		Branch: defaultBranchName,
 		Force:  true,
 	})
 	if err != nil {
-		logger.Error("Failed to create branch", zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
+		logger.Error("Failed to checkout default branch", zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath), zap.Error(err))
 		return err
-	} else {
-		logger.Info("Created branch for module", zap.String("branch", branchName), zap.String("path", localRepoPath))
 	}
+	logger.Info("Checked out default branch", zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath))
 
 	// Check if branch already exists remotely
 	exists, err := remoteBranchExists(repo, remoteRef, logger)
@@ -319,13 +341,28 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 
 	// Push
 	logger.Info("Pushing changes to origin", zap.String("module", moduleName))
-	err = repo.Push(&git.PushOptions{
-		RemoteName: "origin",
-		Auth:       &http.BasicAuth{Username: "anything", Password: config.AdoPat},
-	})
-	if err != nil {
-		logger.Error("Failed to push changes to origin", zap.String("module", moduleName), zap.Error(err))
-		return err
+	if config.AdoPat != "" {
+		pushOpts := &git.PushOptions{}
+		// Only add auth if PAT is configured (not needed in ADO pipeline with persistCredentials: true)
+		if config.AdoPat != "" {
+			pushOpts.Auth = &http.BasicAuth{Username: "anything", Password: config.AdoPat}
+		}
+		logger.Info("Pushing using go-git")
+		err = repo.Push(pushOpts)
+		if err != nil {
+			logger.Error("Failed to push changes to origin", zap.String("module", moduleName), zap.Error(err))
+			return err
+		}
+	} else {
+		logger.Info("Pushing using system git")
+		cmd := exec.Command("git", "push", "origin", branchName)
+		cmd.Dir = localRepoPath
+		output, err := cmd.CombinedOutput()
+		logger.Info("git push output", zap.String("output", string(output)))
+		if err != nil {
+			logger.Error("git push failed", zap.Error(err))
+			return err
+		}
 	}
 	// Create pull request
 	title := "feat(module): Syncing AVM module " + moduleName + " from source repository"
