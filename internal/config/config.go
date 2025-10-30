@@ -7,7 +7,6 @@ const (
 	AdoEnterpriseAppId        string = "499b84ac-1321-427f-aa17-267ca6975798"
 	AdoEnterpriseAppScope     string = AdoEnterpriseAppId + "/.default"
 	LocalCsvPath              string = "./third_party/module-indexes"
-	RemoteTerraformRepository string = "https://riotintodevops.visualstudio.com/Digital%20Products/_git/terraform"
 	BatchSize                 int    = 10
 	DefaultBranchName         string = "main"
 )

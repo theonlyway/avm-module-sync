@@ -6,9 +6,12 @@
             "type": "shell",
             "command": "${workspaceFolder}/bin/avm-sync-linux",
             "args": [
-                "--ado-organization=riotintodevops",
-                "--ado-project=Digital Products",
-                "--ado-repo=aw-terraform-fork",
+                "--ado-organization=<org>",
+                "--ado-project=<project>",
+                "--ado-repo-id=<repo-id>",
+                "--module-sync-author-name=<author-name>",
+                "--module-sync-author-email=<author-email>",
+                "--module-sync-source-repo-child-path=<source-repo-child-path>",
                 "--use-local-identity",
                 "--read-local-csv",
                 "--ado-pat=<pat>"
