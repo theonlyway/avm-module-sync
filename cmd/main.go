@@ -33,7 +33,7 @@ func logFlags(logger *zap.SugaredLogger) {
 		if sensitiveFlags[f.Name] && value != "" {
 			value = maskToken(value)
 		}
-		logger.Infof("  --%s = %s", f.Name, value)
+		logger.Infof("--%s = %s", f.Name, value)
 	})
 }
 

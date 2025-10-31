@@ -160,7 +160,9 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 	var wg sync.WaitGroup
 	jobs := make(chan T)
 
+	// Start goroutines to process modules in batches
 	for range config.BatchSize {
+		// Increment wait group counter
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -185,10 +187,14 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 		}()
 	}
 
+	// Send modules to jobs channel
 	for _, module := range modules {
 		jobs <- module
 	}
+
+	// Close jobs channel and wait for goroutines to finish
 	close(jobs)
+	// Wait for goroutines to finish
 	wg.Wait()
 }
 
