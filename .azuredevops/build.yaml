@@ -1,0 +1,54 @@
+trigger:
+  branches:
+    include:
+    - main
+  paths:
+    exclude:
+    - README.md
+    - docs/*
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  GO_VERSION: '1.24.5'
+
+stages:
+- stage: Build
+  displayName: 'Build Stage'
+  jobs:
+  - job: BuildAndPublish
+    displayName: 'Build and Publish Artifacts'
+    steps:
+    - task: GoTool@0
+      displayName: 'Install Go $(GO_VERSION)'
+      inputs:
+        version: '$(GO_VERSION)'
+
+    - task: Go@0
+      displayName: 'Download Go Dependencies'
+      inputs:
+        command: 'get'
+        workingDirectory: '$(System.DefaultWorkingDirectory)'
+
+    - script: |
+        make build
+      displayName: 'Build Binaries (make build)'
+      workingDirectory: '$(System.DefaultWorkingDirectory)'
+
+    - task: CopyFiles@2
+      displayName: 'Copy Binaries to Staging'
+      inputs:
+        SourceFolder: '$(System.DefaultWorkingDirectory)/bin'
+        Contents: |
+          avm-sync-linux
+          avm-sync-windows.exe
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+        flattenFolders: false
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Build Artifacts'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'avm-sync-binaries'
+        publishLocation: 'Container'

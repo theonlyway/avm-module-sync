@@ -2,11 +2,7 @@ package avmmodules
 
 import (
 	"context"
-	"io"
-	"os"
 	"os/exec"
-	"regexp"
-	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v6"
@@ -21,183 +17,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type ModuleProcessor struct {
-	Logger        *zap.Logger
-	SugaredLogger *zap.SugaredLogger
-	Clients       *ado.AdoClients
-	Context       context.Context
-	Project       string
-	RepoId        *uuid.UUID
-}
-
-type ModulesStruct struct {
-	ResourceModules []ResourceModulesStruct
-	PatternModules  []PatternModulesStruct
-	UtilityModules  []UtilityModulesStruct
-}
-
-type Module interface {
-	GetRepoURL() string
-	GetModuleName() string
-}
-
-func (m ResourceModulesStruct) GetRepoURL() string    { return m.RepoURL }
-func (m PatternModulesStruct) GetRepoURL() string     { return m.RepoURL }
-func (m UtilityModulesStruct) GetRepoURL() string     { return m.RepoURL }
-func (m ResourceModulesStruct) GetModuleName() string { return m.ModuleName }
-func (m PatternModulesStruct) GetModuleName() string  { return m.ModuleName }
-func (m UtilityModulesStruct) GetModuleName() string  { return m.ModuleName }
-
-// ModuleNameTransformer allows custom name transformation per module type
-type ModuleNameTransformer func(string) string
-
-func resourceNameTransformer(name string) string {
-	var resourceRegex = regexp.MustCompile(`^(avm)-(res-)(.+)$`)
-	if matches := resourceRegex.FindStringSubmatch(name); len(matches) == 4 {
-		return "rvm-" + matches[2] + "azurerm-" + matches[3]
-	}
-	return name
-}
-
-func patternNameTransformer(name string) string {
-	var patternRegex = regexp.MustCompile(`^avm-(ptn)-(.*)$`)
-	if matches := patternRegex.FindStringSubmatch(name); len(matches) == 3 {
-		return "rvm-pat-azurerm-" + matches[2]
-	}
-	return name
-}
-
-func utilityNameTransformer(name string) string {
-	var utilityRegex = regexp.MustCompile(`^avm-(utl)-(.*)$`)
-	if matches := utilityRegex.FindStringSubmatch(name); len(matches) == 3 {
-		return "rvm-" + matches[1] + "-azurerm-" + matches[2]
-	}
-	return name
-}
-
-func getModules() (*ModulesStruct, error) {
-	resourceModules, err := getResourceModules()
-	if err != nil {
-		return nil, err
-	}
-
-	patternModules, err := getPatternModules()
-	if err != nil {
-		return nil, err
-	}
-
-	utilityModules, err := getUtilityModules()
-	if err != nil {
-		return nil, err
-	}
-
-	return &ModulesStruct{
-		ResourceModules: resourceModules,
-		PatternModules:  patternModules,
-		UtilityModules:  utilityModules,
-	}, nil
-}
-
-func removeGitFolder(p *ModuleProcessor, path string) {
-	p.Logger.Info("Removing .git folder from", zap.String("path", path))
-	gitPath := path + "/.git"
-	os.RemoveAll(gitPath)
-}
-
-func batchSlice[T any](items []T, batchSize int) [][]T {
-	var batches [][]T
-	for batchSize < len(items) {
-		items, batches = items[batchSize:], append(batches, items[0:batchSize:batchSize])
-	}
-	batches = append(batches, items)
-	return batches
-}
-
-func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
-	if oldPath == newPath {
-		return
-	}
-	if _, err := os.Stat(newPath); err == nil {
-		p.Logger.Warn("New path already exists, removing", zap.String("path", newPath))
-		os.RemoveAll(newPath)
-	}
-	p.Logger.Info("Renaming folder", zap.String("old", oldPath), zap.String("new", newPath))
-	err := os.Rename(oldPath, newPath)
-	if err != nil {
-		p.Logger.Error("Error renaming folder", zap.String("old", oldPath), zap.String("new", newPath), zap.Error(err))
-	}
-}
-
-func CleanUpTempDirs(logger *zap.Logger) {
-	if !config.CleanTempDirs {
-		return
-	}
-	logger.Info("Cleaning up temporary directories")
-	os.RemoveAll(config.TempAvmModuleRepoPath)
-	os.RemoveAll(config.SourceRepoPath)
-}
-
-func CloneRepo(repoURL string, destPath string) error {
-	var progressWriter io.Writer
-	if config.DebugMode {
-		progressWriter = os.Stdout
-	} else {
-		progressWriter = nil
-	}
-	_, err := git.PlainClone(destPath, &git.CloneOptions{
-		URL:      repoURL,
-		Progress: progressWriter,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Logger, processor *ModuleProcessor, nameTransformer ModuleNameTransformer) {
-	var wg sync.WaitGroup
-	jobs := make(chan T)
-
-	// Start goroutines to process modules in batches
-	for range config.BatchSize {
-		// Increment wait group counter
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for module := range jobs {
-				tempPath := destDir + "/" + module.GetModuleName()
-				newModuleName := nameTransformer(module.GetModuleName())
-				newPath := destDir + "/" + newModuleName
-				logger.Info("Transformed module name", zap.String("old", module.GetModuleName()), zap.String("new", newModuleName))
-
-				if _, err := os.Stat(tempPath); err == nil {
-					logger.Warn("Temporary repository path exists", zap.String("path", tempPath))
-					removeGitFolder(processor, tempPath)
-					renameFolders(processor, tempPath, newPath)
-				} else if os.IsNotExist(err) {
-					CloneRepo(module.GetRepoURL(), tempPath)
-					removeGitFolder(processor, tempPath)
-					renameFolders(processor, tempPath, newPath)
-				} else {
-					logger.Error("Error checking temporary repository path", zap.String("path", tempPath), zap.Error(err))
-				}
-			}
-		}()
-	}
-
-	// Send modules to jobs channel
-	for _, module := range modules {
-		jobs <- module
-	}
-
-	// Close jobs channel and wait for goroutines to finish
-	close(jobs)
-	// Wait for goroutines to finish
-	wg.Wait()
-}
-
 func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) {
 	var sourcePath string
 	moduleName := nameTransformer(module.GetModuleName())
@@ -207,6 +26,7 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 	} else {
 		sourcePath = localRepoPath + "/" + moduleName
 	}
+
 	opt := cp.Options{
 		NumOfWorkers: int64(config.BatchSize),
 	}
@@ -222,7 +42,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	authorName := config.ModuleSyncAuthorName
 	authorEmail := config.ModuleSyncAuthorEmail
 	moduleName := nameTransformer(module.GetModuleName())
-	commitMsg := "feat(module): Syncing AVM module " + moduleName + " from source repository"
+	commitMsg := "feat(module): Synced AVM module " + moduleName
 	sourcePath := config.SourceRepoPath
 	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)
 	remoteRef := plumbing.ReferenceName("refs/remotes/origin/" + branchName)
@@ -324,11 +144,75 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		return nil
 	}
 
-	// Add all changes
-	logger.Info("Adding changes", zap.String("module", moduleName))
-	err = w.AddWithOptions(&git.AddOptions{All: true})
+	// Add all module files to staging using system git to respect .gitattributes and line endings since it seems go-git doesn't
+	logger.Info("Adding all files to staging using system git", zap.String("module", moduleName))
+	cmdAdd := exec.Command("git", "add", ".")
+	cmdAdd.Dir = localRepoPath
+	outputAdd, err := cmdAdd.CombinedOutput()
 	if err != nil {
-		logger.Error("Failed to add changes", zap.String("module", moduleName), zap.Error(err))
+		logger.Error("Failed to add changes with system git", zap.String("module", moduleName), zap.String("output", string(outputAdd)), zap.Error(err))
+	}
+
+	// Check if terraform.tf exists in remote origin (default branch)
+	var terraformTfPath string
+	if config.ModuleSyncSourceRepoChildPath != "" {
+		terraformTfPath = config.ModuleSyncSourceRepoChildPath + "/" + moduleName + "/terraform.tf"
+	} else {
+		terraformTfPath = moduleName + "/terraform.tf"
+	}
+
+	// Get the commit from the default branch
+	remoteDefaultRef := plumbing.ReferenceName("refs/remotes/origin/" + config.DefaultBranchName)
+	remoteDefaultBranchRef, err := repo.Reference(remoteDefaultRef, true)
+	if err != nil {
+		logger.Warn("Failed to get remote default branch reference, will not unstage terraform.tf", zap.String("branch", remoteDefaultRef.String()), zap.Error(err))
+	} else {
+		// Check if terraform.tf exists in the remote branch
+		commit, err := repo.CommitObject(remoteDefaultBranchRef.Hash())
+		if err != nil {
+			logger.Warn("Failed to get commit object from remote branch, will not unstage terraform.tf", zap.Error(err))
+		} else {
+			tree, err := commit.Tree()
+			if err != nil {
+				logger.Warn("Failed to get tree from commit, will not unstage terraform.tf", zap.Error(err))
+			} else {
+				_, err := tree.File(terraformTfPath)
+				if err == nil {
+					// File exists in remote origin, unstage it
+					logger.Info("terraform.tf exists in remote origin, unstaging it", zap.String("file", terraformTfPath))
+					err = w.Reset(&git.ResetOptions{
+						Mode:  git.MixedReset,
+						Files: []string{terraformTfPath},
+					})
+					if err != nil {
+						logger.Warn("Failed to unstage terraform.tf, continuing anyway", zap.String("file", terraformTfPath), zap.Error(err))
+					}
+				} else {
+					// File doesn't exist in remote origin, keep it staged
+					logger.Info("terraform.tf does not exist in remote origin, keeping it staged", zap.String("file", terraformTfPath))
+				}
+			}
+		}
+	}
+
+	// Check if there are any staged changes left after unstaging terraform.tf
+	status, err = w.Status()
+	if err != nil {
+		logger.Error("Failed to get git status after unstaging terraform.tf", zap.String("module", moduleName), zap.Error(err))
+		return err
+	}
+
+	hasStagedChanges := false
+	for _, fileStatus := range status {
+		if fileStatus.Staging != git.Unmodified {
+			hasStagedChanges = true
+			break
+		}
+	}
+
+	if !hasStagedChanges {
+		logger.Info("No staged changes to commit", zap.String("module", moduleName))
+		return nil
 	}
 
 	// Commit
@@ -371,7 +255,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		}
 	}
 	// Create pull request
-	title := "feat(module): Syncing AVM module " + moduleName + " from source repository"
+	title := "feat(module): Synced AVM module " + moduleName
 	description := "This is an automated pull request to sync the " + moduleName + " module from the source AVM repository " + module.GetRepoURL()
 	sourceRef := "refs/heads/" + branchName
 	targetRef := "refs/heads/" + config.DefaultBranchName
