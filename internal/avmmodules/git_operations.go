@@ -2,7 +2,9 @@ package avmmodules
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"github.com/go-git/go-git/v6"
@@ -35,6 +37,67 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 	if err != nil {
 		logger.Error("Error copying module to branch", zap.String("modulePath", modulePath), zap.String("sourcePath", sourcePath), zap.Error(err))
 	}
+}
+
+func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Logger) error {
+	// Construct the patch folder path
+	var patchFolderPath string
+	if config.ModuleSyncSourceRepoChildPath != "" {
+		patchFolderPath = filepath.Join(localRepoPath, config.ModuleSyncSourceRepoChildPath, moduleName, "patches")
+	} else {
+		patchFolderPath = filepath.Join(localRepoPath, moduleName, "patches")
+	}
+
+	// Check if the patch folder exists
+	if _, err := os.Stat(patchFolderPath); os.IsNotExist(err) {
+		logger.Info("No patches folder found for module", zap.String("module", moduleName), zap.String("patchFolder", patchFolderPath))
+		return nil
+	}
+
+	logger.Info("Found patches folder, searching for patch files", zap.String("module", moduleName), zap.String("patchFolder", patchFolderPath))
+
+	// Walk through the patch folder and subdirectories to find all .patch files
+	var patchFiles []string
+	err := filepath.Walk(patchFolderPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && filepath.Ext(path) == ".patch" {
+			patchFiles = append(patchFiles, path)
+		}
+		return nil
+	})
+
+	if err != nil {
+		logger.Error("Error walking patch folder", zap.String("module", moduleName), zap.String("patchFolder", patchFolderPath), zap.Error(err))
+		return err
+	}
+
+	if len(patchFiles) == 0 {
+		logger.Info("No patch files found in patches folder", zap.String("module", moduleName), zap.String("patchFolder", patchFolderPath))
+		return nil
+	}
+
+	logger.Info("Found patch files to apply", zap.String("module", moduleName), zap.Int("count", len(patchFiles)))
+
+	// Apply each patch file
+	for _, patchFile := range patchFiles {
+		logger.Info("Applying patch file", zap.String("module", moduleName), zap.String("patchFile", patchFile))
+
+		// Use git apply to apply the patch
+		cmd := exec.Command("git", "apply", patchFile)
+		cmd.Dir = localRepoPath
+		output, err := cmd.CombinedOutput()
+
+		if err != nil {
+			logger.Error("Failed to apply patch", zap.String("module", moduleName), zap.String("patchFile", patchFile), zap.String("output", string(output)), zap.Error(err))
+			return err
+		}
+
+		logger.Info("Successfully applied patch", zap.String("module", moduleName), zap.String("patchFile", patchFile))
+	}
+
+	return nil
 }
 
 func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) error {
@@ -125,6 +188,13 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	}
 
 	copyModuleToBranch(module, localRepoPath, nameTransformer, logger)
+
+	// Apply patches if they exist
+	err = applyPatchesIfExist(moduleName, localRepoPath, logger)
+	if err != nil {
+		logger.Error("Failed to apply patches", zap.String("module", moduleName), zap.Error(err))
+		return err
+	}
 
 	logger.Info("Checking git status", zap.String("module", moduleName))
 	status, err := w.Status()
