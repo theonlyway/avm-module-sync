@@ -5,11 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/object"
 	"github.com/go-git/go-git/v6/plumbing/transport/http"
 	"github.com/google/uuid"
 	adogit "github.com/microsoft/azure-devops-go-api/azuredevops/git"
@@ -110,7 +108,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)
 	remoteRef := plumbing.ReferenceName("refs/remotes/origin/" + branchName)
 	repo, err := git.PlainOpen(sourcePath)
-	logger.Info("Commiting git changes", zap.String("module", moduleName), zap.String("path", localRepoPath))
+	logger.Info("Starting git operations", zap.String("module", moduleName), zap.String("path", localRepoPath))
 	if err != nil {
 		logger.Error("Failed to open repo", zap.String("module", moduleName), zap.String("path", localRepoPath), zap.Error(err))
 		return err
@@ -196,6 +194,16 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		return err
 	}
 
+	// Add all module files to staging using system git to respect .gitattributes and line endings since it seems go-git doesn't
+	logger.Info("Adding all files to staging using system git", zap.String("module", moduleName))
+	cmdAdd := exec.Command("git", "add", ".")
+	cmdAdd.Dir = localRepoPath
+	outputAdd, err := cmdAdd.CombinedOutput()
+	if err != nil {
+		logger.Error("Failed to add changes with system git", zap.String("module", moduleName), zap.String("output", string(outputAdd)), zap.Error(err))
+	}
+
+	// Check if there are any staged changes to commit
 	logger.Info("Checking git status", zap.String("module", moduleName))
 	status, err := w.Status()
 	if err != nil {
@@ -207,69 +215,6 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		for file, fileStatus := range status {
 			logger.Info("Git file status", zap.String("module", moduleName), zap.String("file", file), zap.String("worktree", string(fileStatus.Worktree)), zap.String("staging", string(fileStatus.Staging)))
 		}
-	}
-
-	if status.IsClean() {
-		logger.Info("No changes to commit", zap.String("module", moduleName))
-		return nil
-	}
-
-	// Add all module files to staging using system git to respect .gitattributes and line endings since it seems go-git doesn't
-	logger.Info("Adding all files to staging using system git", zap.String("module", moduleName))
-	cmdAdd := exec.Command("git", "add", ".")
-	cmdAdd.Dir = localRepoPath
-	outputAdd, err := cmdAdd.CombinedOutput()
-	if err != nil {
-		logger.Error("Failed to add changes with system git", zap.String("module", moduleName), zap.String("output", string(outputAdd)), zap.Error(err))
-	}
-
-	// Check if terraform.tf exists in remote origin (default branch)
-	var terraformTfPath string
-	if config.ModuleSyncSourceRepoChildPath != "" {
-		terraformTfPath = config.ModuleSyncSourceRepoChildPath + "/" + moduleName + "/terraform.tf"
-	} else {
-		terraformTfPath = moduleName + "/terraform.tf"
-	}
-
-	// Get the commit from the default branch
-	remoteDefaultRef := plumbing.ReferenceName("refs/remotes/origin/" + config.DefaultBranchName)
-	remoteDefaultBranchRef, err := repo.Reference(remoteDefaultRef, true)
-	if err != nil {
-		logger.Warn("Failed to get remote default branch reference, will not unstage terraform.tf", zap.String("branch", remoteDefaultRef.String()), zap.Error(err))
-	} else {
-		// Check if terraform.tf exists in the remote branch
-		commit, err := repo.CommitObject(remoteDefaultBranchRef.Hash())
-		if err != nil {
-			logger.Warn("Failed to get commit object from remote branch, will not unstage terraform.tf", zap.Error(err))
-		} else {
-			tree, err := commit.Tree()
-			if err != nil {
-				logger.Warn("Failed to get tree from commit, will not unstage terraform.tf", zap.Error(err))
-			} else {
-				_, err := tree.File(terraformTfPath)
-				if err == nil {
-					// File exists in remote origin, unstage it
-					logger.Info("terraform.tf exists in remote origin, unstaging it", zap.String("file", terraformTfPath))
-					err = w.Reset(&git.ResetOptions{
-						Mode:  git.MixedReset,
-						Files: []string{terraformTfPath},
-					})
-					if err != nil {
-						logger.Warn("Failed to unstage terraform.tf, continuing anyway", zap.String("file", terraformTfPath), zap.Error(err))
-					}
-				} else {
-					// File doesn't exist in remote origin, keep it staged
-					logger.Info("terraform.tf does not exist in remote origin, keeping it staged", zap.String("file", terraformTfPath))
-				}
-			}
-		}
-	}
-
-	// Check if there are any staged changes left after unstaging terraform.tf
-	status, err = w.Status()
-	if err != nil {
-		logger.Error("Failed to get git status after unstaging terraform.tf", zap.String("module", moduleName), zap.Error(err))
-		return err
 	}
 
 	hasStagedChanges := false
@@ -285,17 +230,22 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		return nil
 	}
 
-	// Commit
+	// Configure git user for this repository (needed for system git commit)
+	cmdConfigName := exec.Command("git", "config", "user.name", authorName)
+	cmdConfigName.Dir = localRepoPath
+	_, _ = cmdConfigName.CombinedOutput() // Ignore errors, config might already be set
+
+	cmdConfigEmail := exec.Command("git", "config", "user.email", authorEmail)
+	cmdConfigEmail.Dir = localRepoPath
+	_, _ = cmdConfigEmail.CombinedOutput() // Ignore errors, config might already be set
+
+	// Commit using system git (since we're using system git for add)
 	logger.Info("Commiting changes", zap.String("module", moduleName), zap.String("commit_msg", commitMsg))
-	_, err = w.Commit(commitMsg, &git.CommitOptions{
-		Author: &object.Signature{
-			Name:  authorName,
-			Email: authorEmail,
-			When:  time.Now(),
-		},
-	})
+	cmdCommit := exec.Command("git", "commit", "-m", commitMsg)
+	cmdCommit.Dir = localRepoPath
+	outputCommit, err := cmdCommit.CombinedOutput()
 	if err != nil {
-		logger.Error("Failed to commit changes", zap.String("module", moduleName), zap.Error(err))
+		logger.Error("Failed to commit changes", zap.String("module", moduleName), zap.String("output", string(outputCommit)), zap.Error(err))
 		return err
 	}
 
@@ -315,7 +265,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		}
 	} else {
 		logger.Info("Pushing using system git")
-		cmd := exec.Command("git", "push", "origin", branchName)
+		cmd := exec.Command("git", "push", "origin", "HEAD:"+branchName)
 		cmd.Dir = localRepoPath
 		output, err := cmd.CombinedOutput()
 		logger.Info("git push output", zap.String("output", string(output)))
