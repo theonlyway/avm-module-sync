@@ -33,3 +33,5 @@ var ModuleSyncSourceRepoChildPath string
 
 var TempAvmModuleRepoPath string
 var SourceRepoPath string
+
+var AllowedStatuses []string

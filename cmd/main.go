@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"flag"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/theonlyway/avm-module-sync/internal/ado"
@@ -59,6 +60,15 @@ func Main() {
 	flag.StringVar(&config.TempAvmModuleRepoPath, "temp-avm-module-repo-path", "./avm_modules", "The temporary path for the AVM module repository")
 	flag.StringVar(&config.SourceRepoPath, "source-repo-path", "", "The path to copy the AVM modules into")
 	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
+	config.AllowedStatuses = []string{"Available"}
+	flag.Func("allowed-statuses", "Comma-separated list of allowed module statuses (Available, Proposed, Orphaned, Deprecated, Provisional, Planned)", func(val string) error {
+		statuses := strings.Split(val, ",")
+		for i := range statuses {
+			statuses[i] = strings.TrimSpace(statuses[i])
+		}
+		config.AllowedStatuses = statuses
+		return nil
+	})
 	flag.Parse()
 
 	if config.DebugMode {

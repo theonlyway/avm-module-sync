@@ -28,9 +28,12 @@ type Module interface {
 	GetModuleName() string
 }
 
-func (m ResourceModulesStruct) GetRepoURL() string    { return m.RepoURL }
-func (m PatternModulesStruct) GetRepoURL() string     { return m.RepoURL }
-func (m UtilityModulesStruct) GetRepoURL() string     { return m.RepoURL }
-func (m ResourceModulesStruct) GetModuleName() string { return m.ModuleName }
-func (m PatternModulesStruct) GetModuleName() string  { return m.ModuleName }
-func (m UtilityModulesStruct) GetModuleName() string  { return m.ModuleName }
+func (m ResourceModulesStruct) GetRepoURL() string       { return m.RepoURL }
+func (m PatternModulesStruct) GetRepoURL() string        { return m.RepoURL }
+func (m UtilityModulesStruct) GetRepoURL() string        { return m.RepoURL }
+func (m ResourceModulesStruct) GetModuleName() string    { return m.ModuleName }
+func (m PatternModulesStruct) GetModuleName() string     { return m.ModuleName }
+func (m UtilityModulesStruct) GetModuleName() string     { return m.ModuleName }
+func (m ResourceModulesStruct) GetModuleStatus() string  { return m.ModuleStatus }
+func (m PatternModulesStruct) GetModuleStatus() string   { return m.ModuleStatus }
+func (m UtilityModulesStruct) GetModuleStatus() string   { return m.ModuleStatus }
