@@ -12,6 +12,26 @@ import (
 	"go.uber.org/zap"
 )
 
+type stringSliceFlag struct {
+	target *[]string
+}
+
+func (s *stringSliceFlag) String() string {
+	if s.target == nil || len(*s.target) == 0 {
+		return ""
+	}
+	return strings.Join(*s.target, ",")
+}
+
+func (s *stringSliceFlag) Set(val string) error {
+	values := strings.Split(val, ",")
+	for i := range values {
+		values[i] = strings.TrimSpace(values[i])
+	}
+	*s.target = values
+	return nil
+}
+
 func maskToken(token string) string {
 	if token == "" {
 		return "<empty>"
@@ -61,14 +81,9 @@ func Main() {
 	flag.StringVar(&config.SourceRepoPath, "source-repo-path", "", "The path to copy the AVM modules into")
 	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
 	config.AllowedStatuses = []string{"Available"}
-	flag.Func("allowed-statuses", "Comma-separated list of allowed module statuses (Available, Proposed, Orphaned, Deprecated, Provisional, Planned)", func(val string) error {
-		statuses := strings.Split(val, ",")
-		for i := range statuses {
-			statuses[i] = strings.TrimSpace(statuses[i])
-		}
-		config.AllowedStatuses = statuses
-		return nil
-	})
+	flag.Var(&stringSliceFlag{target: &config.AllowedStatuses}, "allowed-statuses", "Comma-separated list of allowed module statuses (Available, Proposed, Orphaned, Deprecated, Provisional, Planned)")
+	config.OverrideModuleNames = []string{}
+	flag.Var(&stringSliceFlag{target: &config.OverrideModuleNames}, "override-modules", "Comma-separated list of AVM module names to include regardless of status")
 	flag.Parse()
 
 	if config.DebugMode {

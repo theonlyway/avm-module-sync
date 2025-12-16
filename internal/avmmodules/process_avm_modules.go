@@ -14,16 +14,30 @@ func isStatusAllowed(status string) bool {
 	return false
 }
 
+func isModuleOverride(moduleName string) bool {
+	for _, override := range config.OverrideModuleNames {
+		if moduleName == override {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
 	modules, err := getModules()
 	if err != nil {
 		return err
 	}
 
-	// Filter modules by allowed statuses
+	// Filter modules by allowed statuses or override list
 	filteredModules := []ResourceModulesStruct{}
 	for _, module := range modules.ResourceModules {
 		if isStatusAllowed(module.ModuleStatus) {
+			filteredModules = append(filteredModules, module)
+		} else if isModuleOverride(module.ModuleName) {
+			p.Logger.Info("Module included via override list",
+				zap.String("module", module.ModuleName),
+				zap.String("status", module.ModuleStatus))
 			filteredModules = append(filteredModules, module)
 		} else {
 			p.Logger.Info("Module filtered out due to status",
@@ -49,10 +63,15 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 		return err
 	}
 
-	// Filter modules by allowed statuses
+	// Filter modules by allowed statuses or override list
 	filteredModules := []PatternModulesStruct{}
 	for _, module := range modules.PatternModules {
 		if isStatusAllowed(module.ModuleStatus) {
+			filteredModules = append(filteredModules, module)
+		} else if isModuleOverride(module.ModuleName) {
+			p.Logger.Info("Module included via override list",
+				zap.String("module", module.ModuleName),
+				zap.String("status", module.ModuleStatus))
 			filteredModules = append(filteredModules, module)
 		} else {
 			p.Logger.Info("Module filtered out due to status",
@@ -78,10 +97,15 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 		return err
 	}
 
-	// Filter modules by allowed statuses
+	// Filter modules by allowed statuses or override list
 	filteredModules := []UtilityModulesStruct{}
 	for _, module := range modules.UtilityModules {
 		if isStatusAllowed(module.ModuleStatus) {
+			filteredModules = append(filteredModules, module)
+		} else if isModuleOverride(module.ModuleName) {
+			p.Logger.Info("Module included via override list",
+				zap.String("module", module.ModuleName),
+				zap.String("status", module.ModuleStatus))
 			filteredModules = append(filteredModules, module)
 		} else {
 			p.Logger.Info("Module filtered out due to status",
