@@ -11,21 +11,31 @@ import (
 )
 
 // GetModules loads and returns all module types (resource, pattern, and utility) from their respective sources.
-func GetModules() (*ModulesStruct, error) {
-	resourceModules, err := getResourceModules()
+func GetModules(logger *zap.Logger) (*ModulesStruct, error) {
+	logger.Info("Starting to load all module types")
+	resourceModules, err := getResourceModules(logger)
 	if err != nil {
+		logger.Error("Failed to get resource modules", zap.Error(err))
 		return nil, err
 	}
 
-	patternModules, err := getPatternModules()
+	patternModules, err := getPatternModules(logger)
 	if err != nil {
+		logger.Error("Failed to get pattern modules", zap.Error(err))
 		return nil, err
 	}
 
-	utilityModules, err := getUtilityModules()
+	utilityModules, err := getUtilityModules(logger)
 	if err != nil {
+		logger.Error("Failed to get utility modules", zap.Error(err))
 		return nil, err
 	}
+
+	logger.Info("Successfully loaded all module types",
+		zap.Int("resource_modules", len(resourceModules)),
+		zap.Int("pattern_modules", len(patternModules)),
+		zap.Int("utility_modules", len(utilityModules)),
+		zap.Int("total_modules", len(resourceModules)+len(patternModules)+len(utilityModules)))
 
 	return &ModulesStruct{
 		ResourceModules: resourceModules,

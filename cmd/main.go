@@ -120,7 +120,7 @@ func Main() {
 	}
 
 	// Load all modules once upfront
-	modules, err := avmmodules.GetModules()
+	modules, err := avmmodules.GetModules(logger)
 	if err != nil {
 		logger.Fatal("Failed to load modules", zap.Error(err))
 	}
