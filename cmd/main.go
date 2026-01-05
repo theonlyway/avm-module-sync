@@ -110,6 +110,12 @@ func Main() {
 		repoId = uuid.MustParse(config.AdoRepoId)
 	}
 
+	// Load all modules once upfront
+	modules, err := avmmodules.GetModules()
+	if err != nil {
+		logger.Fatal("Failed to load modules", zap.Error(err))
+	}
+
 	processor := avmmodules.ModuleProcessor{
 		Logger:        logger,
 		SugaredLogger: sugaredLogger,
@@ -117,6 +123,7 @@ func Main() {
 		Context:       ctx,
 		Project:       config.AdoProject,
 		RepoId:        &repoId,
+		Modules:       modules,
 	}
 
 	if config.ProcessResourceModules {

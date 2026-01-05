@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func getModules() (*ModulesStruct, error) {
+func GetModules() (*ModulesStruct, error) {
 	resourceModules, err := getResourceModules()
 	if err != nil {
 		return nil, err

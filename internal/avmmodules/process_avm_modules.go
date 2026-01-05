@@ -24,14 +24,9 @@ func isModuleOverride(moduleName string) bool {
 }
 
 func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
-	modules, err := getModules()
-	if err != nil {
-		return err
-	}
-
 	// Filter modules by allowed statuses or override list
 	filteredModules := []ResourceModulesStruct{}
-	for _, module := range modules.ResourceModules {
+	for _, module := range p.Modules.ResourceModules {
 		if isStatusAllowed(module.ModuleStatus) {
 			filteredModules = append(filteredModules, module)
 		} else if isModuleOverride(module.ModuleName) {
@@ -58,14 +53,9 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 }
 
 func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesStruct)) error {
-	modules, err := getModules()
-	if err != nil {
-		return err
-	}
-
 	// Filter modules by allowed statuses or override list
 	filteredModules := []PatternModulesStruct{}
-	for _, module := range modules.PatternModules {
+	for _, module := range p.Modules.PatternModules {
 		if isStatusAllowed(module.ModuleStatus) {
 			filteredModules = append(filteredModules, module)
 		} else if isModuleOverride(module.ModuleName) {
@@ -92,14 +82,9 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 }
 
 func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesStruct)) error {
-	modules, err := getModules()
-	if err != nil {
-		return err
-	}
-
 	// Filter modules by allowed statuses or override list
 	filteredModules := []UtilityModulesStruct{}
-	for _, module := range modules.UtilityModules {
+	for _, module := range p.Modules.UtilityModules {
 		if isStatusAllowed(module.ModuleStatus) {
 			filteredModules = append(filteredModules, module)
 		} else if isModuleOverride(module.ModuleName) {

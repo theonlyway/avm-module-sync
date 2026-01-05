@@ -15,6 +15,7 @@ type ModuleProcessor struct {
 	Context       context.Context
 	Project       string
 	RepoId        *uuid.UUID
+	Modules       *ModulesStruct
 }
 
 type ModulesStruct struct {
