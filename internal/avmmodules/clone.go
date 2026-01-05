@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// GetModules loads and returns all module types (resource, pattern, and utility) from their respective sources.
 func GetModules() (*ModulesStruct, error) {
 	resourceModules, err := getResourceModules()
 	if err != nil {
@@ -33,6 +34,7 @@ func GetModules() (*ModulesStruct, error) {
 	}, nil
 }
 
+// batchSlice divides a slice into smaller batches of the specified size.
 func batchSlice[T any](items []T, batchSize int) [][]T {
 	var batches [][]T
 	for batchSize < len(items) {
@@ -42,6 +44,7 @@ func batchSlice[T any](items []T, batchSize int) [][]T {
 	return batches
 }
 
+// CloneRepo clones a Git repository from the specified URL to the destination path.
 func CloneRepo(repoURL string, destPath string) error {
 	var progressWriter io.Writer
 	if config.DebugMode {
@@ -61,6 +64,8 @@ func CloneRepo(repoURL string, destPath string) error {
 	return nil
 }
 
+// CloneModulesInBatches clones multiple modules in parallel using a worker pool pattern.
+// It applies the specified name transformer to each module and removes the .git folder after cloning.
 func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Logger, processor *ModuleProcessor, nameTransformer ModuleNameTransformer) {
 	var wg sync.WaitGroup
 	jobs := make(chan T)

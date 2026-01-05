@@ -5,6 +5,8 @@ import (
 	"go.uber.org/zap"
 )
 
+// isStatusAllowed checks if the given status is in the list of allowed statuses.
+// It returns true if the status is allowed, false otherwise.
 func isStatusAllowed(status string) bool {
 	for _, allowed := range config.AllowedStatuses {
 		if status == allowed {
@@ -14,6 +16,8 @@ func isStatusAllowed(status string) bool {
 	return false
 }
 
+// isModuleOverride checks if the given module name is in the override list.
+// Modules in the override list will be processed regardless of their status.
 func isModuleOverride(moduleName string) bool {
 	for _, override := range config.OverrideModuleNames {
 		if moduleName == override {
@@ -23,6 +27,9 @@ func isModuleOverride(moduleName string) bool {
 	return false
 }
 
+// ProcessResourceModules filters, clones, and processes resource modules based on their status.
+// It applies the given processFunc to each filtered module after cloning and pushing to Git.
+// Modules are filtered by allowed statuses or included via the override list.
 func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
 	// Filter modules by allowed statuses or override list
 	filteredModules := []ResourceModulesStruct{}
@@ -52,6 +59,9 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 	return nil
 }
 
+// ProcessPatternModules filters, clones, and processes pattern modules based on their status.
+// It applies the given processFunc to each filtered module after cloning and pushing to Git.
+// Modules are filtered by allowed statuses or included via the override list.
 func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesStruct)) error {
 	// Filter modules by allowed statuses or override list
 	filteredModules := []PatternModulesStruct{}
@@ -81,6 +91,9 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 	return nil
 }
 
+// ProcessUtilityModules filters, clones, and processes utility modules based on their status.
+// It applies the given processFunc to each filtered module after cloning and pushing to Git.
+// Modules are filtered by allowed statuses or included via the override list.
 func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesStruct)) error {
 	// Filter modules by allowed statuses or override list
 	filteredModules := []UtilityModulesStruct{}

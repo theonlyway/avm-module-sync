@@ -12,10 +12,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// stringSliceFlag is a custom flag type that allows parsing comma-separated string values
+// into a string slice.
 type stringSliceFlag struct {
 	target *[]string
 }
 
+// String returns the string representation of the flag value.
 func (s *stringSliceFlag) String() string {
 	if s.target == nil || len(*s.target) == 0 {
 		return ""
@@ -23,6 +26,7 @@ func (s *stringSliceFlag) String() string {
 	return strings.Join(*s.target, ",")
 }
 
+// Set parses a comma-separated string into individual values and stores them in the target slice.
 func (s *stringSliceFlag) Set(val string) error {
 	values := strings.Split(val, ",")
 	for i := range values {
@@ -32,6 +36,7 @@ func (s *stringSliceFlag) Set(val string) error {
 	return nil
 }
 
+// maskToken masks sensitive tokens for safe logging by showing only the first and last 4 characters.
 func maskToken(token string) string {
 	if token == "" {
 		return "<empty>"
@@ -42,6 +47,7 @@ func maskToken(token string) string {
 	return token[:4] + "..." + token[len(token)-4:]
 }
 
+// logFlags logs all command-line flags with their values, masking sensitive information like tokens.
 func logFlags(logger *zap.SugaredLogger) {
 	sensitiveFlags := map[string]bool{
 		"ado-session-token": true,
@@ -58,6 +64,9 @@ func logFlags(logger *zap.SugaredLogger) {
 	})
 }
 
+// Main is the entry point for the AVM module sync application.
+// It initializes configuration, sets up logging, and orchestrates the processing of resource,
+// pattern, and utility modules from the Azure Verified Modules repository.
 func Main() {
 	var logger *zap.Logger
 	var sugaredLogger *zap.SugaredLogger

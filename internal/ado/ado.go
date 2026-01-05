@@ -13,16 +13,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// AdoClients holds the Azure DevOps API clients and authentication token.
 type AdoClients struct {
 	CoreClient core.Client
 	GitClient  git.Client
 	Token      string
 }
 
+// TokenResponse represents the structure for Azure access token responses.
 type TokenResponse struct {
 	Token string `json:"token"`
 }
 
+// NewAdoClients creates and initializes a new AdoClients instance with authentication.
+// It supports both session token and local Azure identity authentication methods.
 func NewAdoClients(logger *zap.Logger, ctx context.Context) *AdoClients {
 	var connection *azuredevops.Connection
 	var token string
@@ -71,6 +75,7 @@ func NewAdoClients(logger *zap.Logger, ctx context.Context) *AdoClients {
 	}
 }
 
+// getAzureAccessToken retrieves an Azure access token using the default Azure credential chain.
 func getAzureAccessToken(logger *zap.Logger, resource string) (string, error) {
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {

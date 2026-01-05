@@ -7,12 +7,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// removeGitFolder removes the .git directory from a cloned repository.
 func removeGitFolder(p *ModuleProcessor, path string) {
 	p.Logger.Info("Removing .git folder from", zap.String("path", path))
 	gitPath := path + "/.git"
 	os.RemoveAll(gitPath)
 }
 
+// renameFolders renames a folder from oldPath to newPath, removing the newPath if it already exists.
 func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
 	if oldPath == newPath {
 		return
@@ -28,6 +30,7 @@ func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
 	}
 }
 
+// CleanUpTempDirs removes temporary directories used during module processing if cleanup is enabled.
 func CleanUpTempDirs(logger *zap.Logger) {
 	if !config.CleanTempDirs {
 		return

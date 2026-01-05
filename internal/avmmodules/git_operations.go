@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// copyModuleToBranch copies a module from the temporary clone location to the target repository branch.
 func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) {
 	var sourcePath string
 	moduleName := nameTransformer(module.GetModuleName())
@@ -37,6 +38,8 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 	}
 }
 
+// applyPatchesIfExist searches for and applies any .patch files found in the module's patches directory.
+// Patches are applied recursively from subdirectories using git apply.
 func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Logger) error {
 	// Construct the patch folder path
 	var patchFolderPath string
@@ -98,6 +101,9 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 	return nil
 }
 
+// CommitAndPushModulesToGit handles the complete Git workflow for syncing a module.
+// It creates a feature branch, copies the module, applies patches, commits changes,
+// pushes to remote, and creates a pull request in Azure DevOps.
 func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) error {
 	branchName := "feat/avm-module-sync/" + nameTransformer(module.GetModuleName())
 	authorName := config.ModuleSyncAuthorName
@@ -288,6 +294,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	return nil
 }
 
+// remoteBranchExists checks if a branch exists on the remote repository.
 func remoteBranchExists(repo *git.Repository, remoteRef plumbing.ReferenceName, logger *zap.Logger) (bool, error) {
 	logger.Info("Checking if the branch exists on the origin", zap.String("remoteRef", remoteRef.String()))
 	_, err := repo.Reference(remoteRef, true)
@@ -297,6 +304,7 @@ func remoteBranchExists(repo *git.Repository, remoteRef plumbing.ReferenceName, 
 	return err == nil, err
 }
 
+// createPullRequest creates a new pull request in Azure DevOps using the provided parameters.
 func createPullRequest(client adogit.Client, ctx context.Context, repoId *uuid.UUID, project string, sourceBranch, targetBranch, title, description string) (*adogit.GitPullRequest, error) {
 	repoIdStr := repoId.String()
 	pr := adogit.GitPullRequest{

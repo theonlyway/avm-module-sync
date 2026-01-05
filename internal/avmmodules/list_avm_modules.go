@@ -9,6 +9,7 @@ import (
 	"github.com/theonlyway/avm-module-sync/internal/config"
 )
 
+// ResourceModulesStruct represents an Azure Verified Module for Azure resources.
 type ResourceModulesStruct struct {
 	ProviderNamespace       string `csv:"ProviderNamespace"`
 	ResourceType            string `csv:"ResourceType"`
@@ -23,6 +24,7 @@ type ResourceModulesStruct struct {
 	FirstPublishedIn        string `csv:"FirstPublishedIn"`
 }
 
+// PatternModulesStruct represents an Azure Verified Module for architectural patterns.
 type PatternModulesStruct struct {
 	ModuleDisplayName       string `csv:"ModuleDisplayName"`
 	AlternativeNames        string `csv:"AlternativeNames"`
@@ -34,6 +36,7 @@ type PatternModulesStruct struct {
 	FirstPublishedIn        string `csv:"FirstPublishedIn"`
 }
 
+// UtilityModulesStruct represents an Azure Verified Module for utility functions.
 type UtilityModulesStruct struct {
 	ModuleDisplayName       string `csv:"ModuleDisplayName"`
 	AlternativeNames        string `csv:"AlternativeNames"`
@@ -73,6 +76,7 @@ func getResourceModules() ([]ResourceModulesStruct, error) {
 	return modules, nil
 }
 
+// getPatternModules fetches and parses pattern modules from either a local CSV file or remote URL.
 func getPatternModules() ([]PatternModulesStruct, error) {
 	var modules []PatternModulesStruct
 	if config.ReadLocalCsvFile {
@@ -101,6 +105,7 @@ func getPatternModules() ([]PatternModulesStruct, error) {
 	return modules, nil
 }
 
+// getUtilityModules fetches and parses utility modules from either a local CSV file or remote URL.
 func getUtilityModules() ([]UtilityModulesStruct, error) {
 	var modules []UtilityModulesStruct
 	if config.ReadLocalCsvFile {
@@ -130,6 +135,7 @@ func getUtilityModules() ([]UtilityModulesStruct, error) {
 
 }
 
+// openCsvFile opens and returns a file handle for the specified CSV file path.
 func openCsvFile(path string) (*os.File, error) {
 	return os.Open(path)
 }
