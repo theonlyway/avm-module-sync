@@ -10,45 +10,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// ResourceModulesStruct represents an Azure Verified Module for Azure resources.
-type ResourceModulesStruct struct {
-	ProviderNamespace       string `csv:"ProviderNamespace"`
-	ResourceType            string `csv:"ResourceType"`
-	ModuleDisplayName       string `csv:"ModuleDisplayName"`
-	AlternativeNames        string `csv:"AlternativeNames"`
-	ModuleName              string `csv:"ModuleName"`
-	ParentModule            string `csv:"ParentModule"`
-	ModuleStatus            string `csv:"ModuleStatus"`
-	RepoURL                 string `csv:"RepoURL"`
-	PublicRegistryReference string `csv:"PublicRegistryReference"`
-	Description             string `csv:"Description"`
-	FirstPublishedIn        string `csv:"FirstPublishedIn"`
-}
-
-// PatternModulesStruct represents an Azure Verified Module for architectural patterns.
-type PatternModulesStruct struct {
-	ModuleDisplayName       string `csv:"ModuleDisplayName"`
-	AlternativeNames        string `csv:"AlternativeNames"`
-	ModuleName              string `csv:"ModuleName"`
-	ModuleStatus            string `csv:"ModuleStatus"`
-	RepoURL                 string `csv:"RepoURL"`
-	PublicRegistryReference string `csv:"PublicRegistryReference"`
-	Description             string `csv:"Description"`
-	FirstPublishedIn        string `csv:"FirstPublishedIn"`
-}
-
-// UtilityModulesStruct represents an Azure Verified Module for utility functions.
-type UtilityModulesStruct struct {
-	ModuleDisplayName       string `csv:"ModuleDisplayName"`
-	AlternativeNames        string `csv:"AlternativeNames"`
-	ModuleName              string `csv:"ModuleName"`
-	ModuleStatus            string `csv:"ModuleStatus"`
-	RepoURL                 string `csv:"RepoURL"`
-	PublicRegistryReference string `csv:"PublicRegistryReference"`
-	Description             string `csv:"Description"`
-	FirstPublishedIn        string `csv:"FirstPublishedIn"`
-}
-
 func getResourceModules(logger *zap.Logger) ([]ResourceModulesStruct, error) {
 	var modules []ResourceModulesStruct
 	if config.ReadLocalCsvFile {
