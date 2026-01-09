@@ -90,18 +90,18 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 				tempPath := destDir + "/" + module.GetModuleName()
 				newModuleName := nameTransformer(module.GetModuleName())
 				newPath := destDir + "/" + newModuleName
-				logger.Info("Transformed module name", zap.String("old", module.GetModuleName()), zap.String("new", newModuleName))
+				logger.Info("Transformed module name", zap.String("module", newModuleName), zap.String("old", module.GetModuleName()), zap.String("new", newModuleName))
 
 				if _, err := os.Stat(tempPath); err == nil {
-					logger.Warn("Temporary repository path exists", zap.String("path", tempPath))
-					removeGitFolder(processor, tempPath)
-					renameFolders(processor, tempPath, newPath)
+					logger.Warn("Temporary repository path exists", zap.String("module", newModuleName), zap.String("path", tempPath))
+					removeGitFolder(processor, tempPath, newModuleName)
+					renameFolders(processor, tempPath, newPath, newModuleName)
 				} else if os.IsNotExist(err) {
 					CloneRepo(module.GetRepoURL(), tempPath)
-					removeGitFolder(processor, tempPath)
-					renameFolders(processor, tempPath, newPath)
+					removeGitFolder(processor, tempPath, newModuleName)
+					renameFolders(processor, tempPath, newPath, newModuleName)
 				} else {
-					logger.Error("Error checking temporary repository path", zap.String("path", tempPath), zap.Error(err))
+					logger.Error("Error checking temporary repository path", zap.String("module", newModuleName), zap.String("path", tempPath), zap.Error(err))
 				}
 			}
 		}()

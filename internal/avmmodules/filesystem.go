@@ -8,25 +8,25 @@ import (
 )
 
 // removeGitFolder removes the .git directory from a cloned repository.
-func removeGitFolder(p *ModuleProcessor, path string) {
-	p.Logger.Info("Removing .git folder from", zap.String("path", path))
+func removeGitFolder(p *ModuleProcessor, path string, moduleName string) {
+	p.Logger.Info("Removing .git folder from", zap.String("module", moduleName), zap.String("path", path))
 	gitPath := path + "/.git"
 	os.RemoveAll(gitPath)
 }
 
 // renameFolders renames a folder from oldPath to newPath, removing the newPath if it already exists.
-func renameFolders(p *ModuleProcessor, oldPath string, newPath string) {
+func renameFolders(p *ModuleProcessor, oldPath string, newPath string, moduleName string) {
 	if oldPath == newPath {
 		return
 	}
 	if _, err := os.Stat(newPath); err == nil {
-		p.Logger.Warn("New path already exists, removing", zap.String("path", newPath))
+		p.Logger.Warn("New path already exists, removing", zap.String("module", moduleName), zap.String("path", newPath))
 		os.RemoveAll(newPath)
 	}
-	p.Logger.Info("Renaming folder", zap.String("old", oldPath), zap.String("new", newPath))
+	p.Logger.Info("Renaming folder", zap.String("module", moduleName), zap.String("old", oldPath), zap.String("new", newPath))
 	err := os.Rename(oldPath, newPath)
 	if err != nil {
-		p.Logger.Error("Error renaming folder", zap.String("old", oldPath), zap.String("new", newPath), zap.Error(err))
+		p.Logger.Error("Error renaming folder", zap.String("module", moduleName), zap.String("old", oldPath), zap.String("new", newPath), zap.Error(err))
 	}
 }
 

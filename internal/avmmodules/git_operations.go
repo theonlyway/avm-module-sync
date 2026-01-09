@@ -31,10 +31,10 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 	opt := cp.Options{
 		NumOfWorkers: int64(config.BatchSize),
 	}
-	logger.Info("Copying module to branch", zap.String("source", modulePath), zap.String("dest", sourcePath))
+	logger.Info("Copying module to branch", zap.String("module", moduleName), zap.String("source", modulePath), zap.String("dest", sourcePath))
 	err := cp.Copy(modulePath, sourcePath, opt)
 	if err != nil {
-		logger.Error("Error copying module to branch", zap.String("modulePath", modulePath), zap.String("sourcePath", sourcePath), zap.Error(err))
+		logger.Error("Error copying module to branch", zap.String("module", moduleName), zap.String("modulePath", modulePath), zap.String("sourcePath", sourcePath), zap.Error(err))
 	}
 }
 
@@ -136,17 +136,17 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		remoteDefaultRef := plumbing.ReferenceName("refs/remotes/origin/" + config.DefaultBranchName)
 		remoteRef, err := repo.Reference(remoteDefaultRef, true)
 		if err != nil {
-			logger.Error("Failed to get remote default branch reference", zap.String("branch", remoteDefaultRef.String()), zap.Error(err))
+			logger.Error("Failed to get remote default branch reference", zap.String("module", moduleName), zap.String("branch", remoteDefaultRef.String()), zap.Error(err))
 			return err
 		}
 		// Create local branch pointing to same commit as remote
 		headRef := plumbing.NewHashReference(defaultBranchName, remoteRef.Hash())
 		err = repo.Storer.SetReference(headRef)
 		if err != nil {
-			logger.Error("Failed to create local default branch", zap.String("branch", defaultBranchName.String()), zap.Error(err))
+			logger.Error("Failed to create local default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.Error(err))
 			return err
 		}
-		logger.Info("Created local default branch", zap.String("branch", defaultBranchName.String()), zap.String("commit", remoteRef.Hash().String()))
+		logger.Info("Created local default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.String("commit", remoteRef.Hash().String()))
 	}
 
 	err = w.Checkout(&git.CheckoutOptions{
@@ -154,28 +154,28 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		Force:  true,
 	})
 	if err != nil {
-		logger.Error("Failed to checkout default branch", zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath), zap.Error(err))
+		logger.Error("Failed to checkout default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath), zap.Error(err))
 		return err
 	}
-	logger.Info("Checked out default branch", zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath))
+	logger.Info("Checked out default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath))
 
 	// Check if branch already exists remotely
-	exists, err := remoteBranchExists(repo, remoteRef, logger)
+	exists, err := remoteBranchExists(repo, remoteRef, logger, moduleName)
 	if err != nil {
-		logger.Error("Failed to check if branch exists remotely", zap.String("branch", remoteRef.String()), zap.String("path", localRepoPath), zap.Error(err))
+		logger.Error("Failed to check if branch exists remotely", zap.String("module", moduleName), zap.String("branch", remoteRef.String()), zap.String("path", localRepoPath), zap.Error(err))
 		return err
 	}
 	if exists {
-		logger.Info("Branch already exists remotely", zap.String("branch", branchName), zap.String("path", localRepoPath))
+		logger.Info("Branch already exists remotely", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath))
 		err = w.Checkout(&git.CheckoutOptions{
 			Branch: remoteRef,
 			Force:  true,
 		})
 		if err != nil {
-			logger.Error("Failed to create branch", zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
+			logger.Error("Failed to create branch", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
 			return err
 		} else {
-			logger.Info("Created branch for module", zap.String("branch", branchName), zap.String("path", localRepoPath))
+			logger.Info("Created branch for module", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath))
 		}
 	} else {
 		logger.Info("Creating and checking out module branch", zap.String("module", moduleName), zap.String("branch", branchName))
@@ -184,10 +184,10 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 			Create: true,
 		})
 		if err != nil {
-			logger.Error("Failed to create branch", zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
+			logger.Error("Failed to create branch", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
 			return err
 		} else {
-			logger.Info("Created branch for module", zap.String("branch", branchName), zap.String("path", localRepoPath))
+			logger.Info("Created branch for module", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath))
 		}
 	}
 
@@ -263,18 +263,18 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		if config.AdoPat != "" {
 			pushOpts.Auth = &http.BasicAuth{Username: "anything", Password: config.AdoPat}
 		}
-		logger.Info("Pushing using go-git")
+		logger.Info("Pushing using go-git", zap.String("module", moduleName))
 		err = repo.Push(pushOpts)
 		if err != nil {
 			logger.Error("Failed to push changes to origin", zap.String("module", moduleName), zap.Error(err))
 			return err
 		}
 	} else {
-		logger.Info("Pushing using system git")
+		logger.Info("Pushing using system git", zap.String("module", moduleName))
 		cmd := exec.Command("git", "push", "origin", "HEAD:"+branchName)
 		cmd.Dir = localRepoPath
 		output, err := cmd.CombinedOutput()
-		logger.Info("git push output", zap.String("output", string(output)))
+		logger.Info("git push output", zap.String("module", moduleName), zap.String("output", string(output)))
 		if err != nil {
 			logger.Error("git push failed", zap.Error(err))
 			return err
@@ -295,8 +295,8 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 }
 
 // remoteBranchExists checks if a branch exists on the remote repository.
-func remoteBranchExists(repo *git.Repository, remoteRef plumbing.ReferenceName, logger *zap.Logger) (bool, error) {
-	logger.Info("Checking if the branch exists on the origin", zap.String("remoteRef", remoteRef.String()))
+func remoteBranchExists(repo *git.Repository, remoteRef plumbing.ReferenceName, logger *zap.Logger, moduleName string) (bool, error) {
+	logger.Info("Checking if the branch exists on the origin", zap.String("module", moduleName), zap.String("remoteRef", remoteRef.String()))
 	_, err := repo.Reference(remoteRef, true)
 	if err == plumbing.ErrReferenceNotFound {
 		return false, nil
