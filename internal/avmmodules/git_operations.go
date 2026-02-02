@@ -18,7 +18,7 @@ import (
 )
 
 // copyModuleToBranch copies a module from the temporary clone location to the target repository branch.
-// Removes all files/folders except the patches directory to ensure files deleted from source are also removed from destination.
+// Backs up the patches directory, does a clean copy, then restores patches to ensure files deleted from source are removed.
 func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) {
 	var sourcePath string
 	moduleName := nameTransformer(module.GetModuleName())
@@ -29,28 +29,31 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 		sourcePath = localRepoPath + "/" + moduleName
 	}
 
-	// Remove all contents except patches directory to ensure clean sync while preserving patches
-	if _, err := os.Stat(sourcePath); err == nil {
-		logger.Info("Cleaning existing module directory (preserving patches)", zap.String("module", moduleName), zap.String("path", sourcePath))
-		entries, err := os.ReadDir(sourcePath)
+	// Backup patches directory if it exists
+	patchesPath := filepath.Join(sourcePath, config.PatchesFolderName)
+	tempPatchesPath := filepath.Join(config.TempAvmModuleRepoPath, ".backup-patches-"+moduleName)
+	hasPatchesBackup := false
+
+	if _, err := os.Stat(patchesPath); err == nil {
+		logger.Info("Backing up patches directory", zap.String("module", moduleName), zap.String("from", patchesPath), zap.String("to", tempPatchesPath))
+		err = os.Rename(patchesPath, tempPatchesPath)
 		if err != nil {
-			logger.Error("Error reading module directory", zap.String("module", moduleName), zap.String("path", sourcePath), zap.Error(err))
+			logger.Error("Error backing up patches directory", zap.String("module", moduleName), zap.Error(err))
 		} else {
-			for _, entry := range entries {
-				// Skip the patches directory
-				if entry.Name() == config.PatchesFolderName {
-					logger.Info("Preserving patches directory", zap.String("module", moduleName))
-					continue
-				}
-				entryPath := filepath.Join(sourcePath, entry.Name())
-				err = os.RemoveAll(entryPath)
-				if err != nil {
-					logger.Error("Error removing entry", zap.String("module", moduleName), zap.String("entry", entryPath), zap.Error(err))
-				}
-			}
+			hasPatchesBackup = true
 		}
 	}
 
+	// Remove destination directory for clean sync
+	if _, err := os.Stat(sourcePath); err == nil {
+		logger.Info("Removing existing module directory for clean sync", zap.String("module", moduleName), zap.String("path", sourcePath))
+		err = os.RemoveAll(sourcePath)
+		if err != nil {
+			logger.Error("Error removing module directory", zap.String("module", moduleName), zap.String("path", sourcePath), zap.Error(err))
+		}
+	}
+
+	// Copy fresh module content
 	opt := cp.Options{
 		NumOfWorkers: int64(config.BatchSize),
 	}
@@ -58,6 +61,15 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 	err := cp.Copy(modulePath, sourcePath, opt)
 	if err != nil {
 		logger.Error("Error copying module to branch", zap.String("module", moduleName), zap.String("modulePath", modulePath), zap.String("sourcePath", sourcePath), zap.Error(err))
+	}
+
+	// Restore patches directory if we backed it up
+	if hasPatchesBackup {
+		logger.Info("Restoring patches directory", zap.String("module", moduleName), zap.String("from", tempPatchesPath), zap.String("to", patchesPath))
+		err = os.Rename(tempPatchesPath, patchesPath)
+		if err != nil {
+			logger.Error("Error restoring patches directory", zap.String("module", moduleName), zap.Error(err))
+		}
 	}
 }
 
