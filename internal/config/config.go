@@ -9,6 +9,7 @@ const (
 	LocalCsvPath          string = "./third_party/module-indexes"
 	BatchSize             int    = 10
 	DefaultBranchName     string = "main"
+	PatchesFolderName     string = "patches"
 )
 
 var ProcessResourceModules bool

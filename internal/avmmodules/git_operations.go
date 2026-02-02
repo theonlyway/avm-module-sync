@@ -18,6 +18,7 @@ import (
 )
 
 // copyModuleToBranch copies a module from the temporary clone location to the target repository branch.
+// Removes all files/folders except the patches directory to ensure files deleted from source are also removed from destination.
 func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) {
 	var sourcePath string
 	moduleName := nameTransformer(module.GetModuleName())
@@ -26,6 +27,28 @@ func copyModuleToBranch[T Module](module T, localRepoPath string, nameTransforme
 		sourcePath = localRepoPath + "/" + config.ModuleSyncSourceRepoChildPath + "/" + moduleName
 	} else {
 		sourcePath = localRepoPath + "/" + moduleName
+	}
+
+	// Remove all contents except patches directory to ensure clean sync while preserving patches
+	if _, err := os.Stat(sourcePath); err == nil {
+		logger.Info("Cleaning existing module directory (preserving patches)", zap.String("module", moduleName), zap.String("path", sourcePath))
+		entries, err := os.ReadDir(sourcePath)
+		if err != nil {
+			logger.Error("Error reading module directory", zap.String("module", moduleName), zap.String("path", sourcePath), zap.Error(err))
+		} else {
+			for _, entry := range entries {
+				// Skip the patches directory
+				if entry.Name() == config.PatchesFolderName {
+					logger.Info("Preserving patches directory", zap.String("module", moduleName))
+					continue
+				}
+				entryPath := filepath.Join(sourcePath, entry.Name())
+				err = os.RemoveAll(entryPath)
+				if err != nil {
+					logger.Error("Error removing entry", zap.String("module", moduleName), zap.String("entry", entryPath), zap.Error(err))
+				}
+			}
+		}
 	}
 
 	opt := cp.Options{
@@ -44,9 +67,9 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 	// Construct the patch folder path
 	var patchFolderPath string
 	if config.ModuleSyncSourceRepoChildPath != "" {
-		patchFolderPath = filepath.Join(localRepoPath, config.ModuleSyncSourceRepoChildPath, moduleName, "patches")
+		patchFolderPath = filepath.Join(localRepoPath, config.ModuleSyncSourceRepoChildPath, moduleName, config.PatchesFolderName)
 	} else {
-		patchFolderPath = filepath.Join(localRepoPath, moduleName, "patches")
+		patchFolderPath = filepath.Join(localRepoPath, moduleName, config.PatchesFolderName)
 	}
 
 	// Check if the patch folder exists
