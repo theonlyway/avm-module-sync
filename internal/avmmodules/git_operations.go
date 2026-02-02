@@ -201,8 +201,9 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	}
 
 	// Add all module files to staging using system git to respect .gitattributes and line endings since it seems go-git doesn't
+	// Use -A to also stage deletions of files that exist in repo but not in source
 	logger.Info("Adding all files to staging using system git", zap.String("module", moduleName))
-	cmdAdd := exec.Command("git", "add", ".")
+	cmdAdd := exec.Command("git", "add", "-A", ".")
 	cmdAdd.Dir = localRepoPath
 	outputAdd, err := cmdAdd.CombinedOutput()
 	if err != nil {
