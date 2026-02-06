@@ -117,6 +117,7 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 	logger.Info("Found patch files to apply", zap.String("module", moduleName), zap.Int("count", len(patchFiles)))
 
 	// Apply each patch file
+	failedPatches := 0
 	for _, patchFile := range patchFiles {
 		logger.Info("Applying patch file", zap.String("module", moduleName), zap.String("patchFile", patchFile))
 
@@ -126,11 +127,16 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {
-			logger.Error("Failed to apply patch", zap.String("module", moduleName), zap.String("patchFile", patchFile), zap.String("output", string(output)), zap.Error(err))
-			return err
+			logger.Error("Failed to apply patch, continuing with remaining patches", zap.String("module", moduleName), zap.String("patchFile", patchFile), zap.String("output", string(output)), zap.Error(err))
+			failedPatches++
+			continue
 		}
 
 		logger.Info("Successfully applied patch", zap.String("module", moduleName), zap.String("patchFile", patchFile))
+	}
+
+	if failedPatches > 0 {
+		logger.Warn("Some patches failed to apply, but continuing with commit", zap.String("module", moduleName), zap.Int("failedCount", failedPatches), zap.Int("totalCount", len(patchFiles)))
 	}
 
 	return nil
@@ -231,8 +237,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	// Apply patches if they exist
 	err = applyPatchesIfExist(moduleName, localRepoPath, logger)
 	if err != nil {
-		logger.Error("Failed to apply patches", zap.String("module", moduleName), zap.Error(err))
-		return err
+		logger.Warn("Errors occurred while applying patches, but continuing with commit", zap.String("module", moduleName), zap.Error(err))
 	}
 
 	// Add all module files to staging using system git to respect .gitattributes and line endings since it seems go-git doesn't
