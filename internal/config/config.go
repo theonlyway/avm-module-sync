@@ -36,4 +36,5 @@ var TempAvmModuleRepoPath string
 var SourceRepoPath string
 
 var AllowedStatuses []string
-var OverrideModuleNames []string
+var AllowedModuleNames []string
+var ExcludedModuleNames []string

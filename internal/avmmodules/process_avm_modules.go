@@ -19,8 +19,19 @@ func isStatusAllowed(status string) bool {
 // isModuleOverride checks if the given module name is in the override list.
 // Modules in the override list will be processed regardless of their status.
 func isModuleOverride(moduleName string) bool {
-	for _, override := range config.OverrideModuleNames {
+	for _, override := range config.AllowedModuleNames {
 		if moduleName == override {
+			return true
+		}
+	}
+	return false
+}
+
+// isModuleExcluded checks if the given module name is in the exclusion list.
+// Modules in the exclusion list will not be processed.
+func isModuleExcluded(moduleName string) bool {
+	for _, excluded := range config.ExcludedModuleNames {
+		if moduleName == excluded {
 			return true
 		}
 	}
@@ -34,6 +45,12 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 	// Filter modules by allowed statuses or override list
 	filteredModules := []ResourceModulesStruct{}
 	for _, module := range p.Modules.ResourceModules {
+		if isModuleExcluded(module.ModuleName) {
+			p.Logger.Info("Module excluded via exclusion list",
+				zap.String("module", module.ModuleName),
+				zap.String("status", module.ModuleStatus))
+			continue
+		}
 		if isStatusAllowed(module.ModuleStatus) {
 			filteredModules = append(filteredModules, module)
 		} else if isModuleOverride(module.ModuleName) {
@@ -66,6 +83,12 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 	// Filter modules by allowed statuses or override list
 	filteredModules := []PatternModulesStruct{}
 	for _, module := range p.Modules.PatternModules {
+		if isModuleExcluded(module.ModuleName) {
+			p.Logger.Info("Module excluded via exclusion list",
+				zap.String("module", module.ModuleName),
+				zap.String("status", module.ModuleStatus))
+			continue
+		}
 		if isStatusAllowed(module.ModuleStatus) {
 			filteredModules = append(filteredModules, module)
 		} else if isModuleOverride(module.ModuleName) {
@@ -98,6 +121,12 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 	// Filter modules by allowed statuses or override list
 	filteredModules := []UtilityModulesStruct{}
 	for _, module := range p.Modules.UtilityModules {
+		if isModuleExcluded(module.ModuleName) {
+			p.Logger.Info("Module excluded via exclusion list",
+				zap.String("module", module.ModuleName),
+				zap.String("status", module.ModuleStatus))
+			continue
+		}
 		if isStatusAllowed(module.ModuleStatus) {
 			filteredModules = append(filteredModules, module)
 		} else if isModuleOverride(module.ModuleName) {

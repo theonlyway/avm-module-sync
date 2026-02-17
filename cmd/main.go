@@ -91,8 +91,10 @@ func Main() {
 	flag.BoolVar(&config.DebugMode, "debug", false, "Enable debug mode")
 	config.AllowedStatuses = []string{"Available"}
 	flag.Var(&stringSliceFlag{target: &config.AllowedStatuses}, "allowed-statuses", "Comma-separated list of allowed module statuses (Available, Proposed, Orphaned, Deprecated, Provisional, Planned)")
-	config.OverrideModuleNames = []string{}
-	flag.Var(&stringSliceFlag{target: &config.OverrideModuleNames}, "override-modules", "Comma-separated list of AVM module names to include regardless of status")
+	config.AllowedModuleNames = []string{}
+	flag.Var(&stringSliceFlag{target: &config.AllowedModuleNames}, "allowed-modules", "Comma-separated list of AVM module names to include regardless of status")
+	config.ExcludedModuleNames = []string{}
+	flag.Var(&stringSliceFlag{target: &config.ExcludedModuleNames}, "excluded-modules", "Comma-separated list of AVM module names to exclude from processing")
 	flag.Parse()
 
 	if config.DebugMode {
