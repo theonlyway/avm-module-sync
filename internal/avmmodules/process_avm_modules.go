@@ -70,7 +70,16 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, resourceNameTransformer)
 	}
 	for _, module := range filteredModules {
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, p.Logger)
+		transformedName := resourceNameTransformer(module.GetModuleName())
+		commitType := "feat"
+		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
+			commitType = v.(string)
+		}
+		latestAvmTag := ""
+		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
+			latestAvmTag = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, commitType, latestAvmTag, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -108,7 +117,16 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, patternNameTransformer)
 	}
 	for _, module := range filteredModules {
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, p.Logger)
+		transformedName := patternNameTransformer(module.GetModuleName())
+		commitType := "feat"
+		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
+			commitType = v.(string)
+		}
+		latestAvmTag := ""
+		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
+			latestAvmTag = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, commitType, latestAvmTag, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -146,7 +164,16 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, utilityNameTransformer)
 	}
 	for _, module := range filteredModules {
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, p.Logger)
+		transformedName := utilityNameTransformer(module.GetModuleName())
+		commitType := "feat"
+		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
+			commitType = v.(string)
+		}
+		latestAvmTag := ""
+		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
+			latestAvmTag = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, commitType, latestAvmTag, p.Logger)
 		processFunc(module)
 	}
 

@@ -2,6 +2,7 @@ package avmmodules
 
 import (
 	"context"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/theonlyway/avm-module-sync/internal/ado"
@@ -10,13 +11,15 @@ import (
 
 // ModuleProcessor holds the context and clients needed for processing AVM modules.
 type ModuleProcessor struct {
-	Logger        *zap.Logger
-	SugaredLogger *zap.SugaredLogger
-	Clients       *ado.AdoClients
-	Context       context.Context
-	Project       string
-	RepoId        *uuid.UUID
-	Modules       *ModulesStruct
+	Logger                    *zap.Logger
+	SugaredLogger             *zap.SugaredLogger
+	Clients                   *ado.AdoClients
+	Context                   context.Context
+	Project                   string
+	RepoId                    *uuid.UUID
+	Modules                   *ModulesStruct
+	ConventionalCommitTypeMap sync.Map
+	LatestAvmTagMap           sync.Map
 }
 
 // ModulesStruct holds all three types of AVM modules.

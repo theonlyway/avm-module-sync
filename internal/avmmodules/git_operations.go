@@ -142,15 +142,34 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 	return nil
 }
 
+// buildConventionalCommitMessage constructs a conventional commit message for the given
+// commit type and module name.  Recognised types: "breaking", "feat", "fix", "chore".
+func buildConventionalCommitMessage(commitType, moduleName string) string {
+	switch commitType {
+	case "breaking":
+		return "feat(module)!: Synced AVM module " + moduleName
+	case "fix":
+		return "fix(module): Synced AVM module " + moduleName
+	case "chore":
+		return "chore(module): Synced AVM module " + moduleName
+	default: // "feat" and any unknown value
+		return "feat(module): Synced AVM module " + moduleName
+	}
+}
+
 // CommitAndPushModulesToGit handles the complete Git workflow for syncing a module.
 // It creates a feature branch, copies the module, applies patches, commits changes,
 // pushes to remote, and creates a pull request in Azure DevOps.
-func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, logger *zap.Logger) error {
+// commitType should be one of "breaking", "feat", "fix", or "chore" as determined by
+// analysing the upstream AVM repo's conventional commit history.
+// latestAvmTag is the most recent tag from the upstream AVM repo; it is written to
+// .avm-version inside the module folder so the next run knows where to start from.
+func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, commitType string, latestAvmTag string, logger *zap.Logger) error {
 	branchName := "feat/avm-module-sync/" + nameTransformer(module.GetModuleName())
 	authorName := config.ModuleSyncAuthorName
 	authorEmail := config.ModuleSyncAuthorEmail
 	moduleName := nameTransformer(module.GetModuleName())
-	commitMsg := "feat(module): Synced AVM module " + moduleName
+	commitMsg := buildConventionalCommitMessage(commitType, moduleName)
 	sourcePath := config.SourceRepoPath
 	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)
 	remoteRef := plumbing.ReferenceName("refs/remotes/origin/" + branchName)
@@ -233,6 +252,9 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	}
 
 	copyModuleToBranch(module, localRepoPath, nameTransformer, logger)
+
+	// Write the version file so the next sync knows which AVM tag was last applied
+	writeAvmVersionFile(moduleName, localRepoPath, latestAvmTag, logger)
 
 	// Apply patches if they exist
 	err = applyPatchesIfExist(moduleName, localRepoPath, logger)
@@ -322,7 +344,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		}
 	}
 	// Create pull request
-	title := "feat(module): Synced AVM module " + moduleName
+	title := buildConventionalCommitMessage(commitType, moduleName)
 	description := "This is an automated pull request to sync the " + moduleName + " module from the source AVM repository " + module.GetRepoURL()
 	sourceRef := "refs/heads/" + branchName
 	targetRef := "refs/heads/" + config.DefaultBranchName

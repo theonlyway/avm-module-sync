@@ -94,10 +94,16 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 
 				if _, err := os.Stat(tempPath); err == nil {
 					logger.Warn("Temporary repository path exists", zap.String("module", newModuleName), zap.String("path", tempPath))
-					removeGitFolder(processor, tempPath, newModuleName)
+					// .git already removed in a previous run; no commit analysis possible
+					processor.ConventionalCommitTypeMap.Store(newModuleName, "feat")
+					processor.LatestAvmTagMap.Store(newModuleName, "")
 					renameFolders(processor, tempPath, newPath, newModuleName)
 				} else if os.IsNotExist(err) {
+					lastSyncedTag := readAvmVersionFile(newModuleName, logger)
 					CloneRepo(module.GetRepoURL(), tempPath)
+					commitType, latestTag := analyzeConventionalCommits(tempPath, lastSyncedTag, logger)
+					processor.ConventionalCommitTypeMap.Store(newModuleName, commitType)
+					processor.LatestAvmTagMap.Store(newModuleName, latestTag)
 					removeGitFolder(processor, tempPath, newModuleName)
 					renameFolders(processor, tempPath, newPath, newModuleName)
 				} else {

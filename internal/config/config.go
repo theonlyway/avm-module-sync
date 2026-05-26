@@ -10,6 +10,7 @@ const (
 	BatchSize             int    = 10
 	DefaultBranchName     string = "main"
 	PatchesFolderName     string = "patches"
+	AvmVersionFileName    string = ".avm-version"
 )
 
 var ProcessResourceModules bool

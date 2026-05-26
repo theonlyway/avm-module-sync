@@ -2,6 +2,8 @@ package avmmodules
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
@@ -38,4 +40,50 @@ func CleanUpTempDirs(logger *zap.Logger) {
 	logger.Info("Cleaning up temporary directories")
 	os.RemoveAll(config.TempAvmModuleRepoPath)
 	os.RemoveAll(config.SourceRepoPath)
+}
+
+// moduleVersionFilePath returns the absolute path of the .avm-version file for a module
+// inside the ADO source repository.
+func moduleVersionFilePath(moduleName string) string {
+	if config.ModuleSyncSourceRepoChildPath != "" {
+		return filepath.Join(config.SourceRepoPath, config.ModuleSyncSourceRepoChildPath, moduleName, config.AvmVersionFileName)
+	}
+	return filepath.Join(config.SourceRepoPath, moduleName, config.AvmVersionFileName)
+}
+
+// readAvmVersionFile reads the last-synced AVM tag from the module's version file.
+// Returns an empty string if the file does not exist or cannot be read.
+func readAvmVersionFile(moduleName string, logger *zap.Logger) string {
+	path := moduleVersionFilePath(moduleName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Warn("Could not read AVM version file", zap.String("module", moduleName), zap.String("path", path), zap.Error(err))
+		}
+		return ""
+	}
+	tag := strings.TrimSpace(string(data))
+	logger.Info("Read last synced AVM tag from version file", zap.String("module", moduleName), zap.String("tag", tag))
+	return tag
+}
+
+// writeAvmVersionFile writes the latest AVM tag to the module's version file so subsequent
+// runs know which tag was last synced.
+func writeAvmVersionFile(moduleName string, localRepoPath string, latestAvmTag string, logger *zap.Logger) {
+	if latestAvmTag == "" {
+		logger.Warn("No AVM tag available to write to version file, skipping", zap.String("module", moduleName))
+		return
+	}
+	var versionFilePath string
+	if config.ModuleSyncSourceRepoChildPath != "" {
+		versionFilePath = filepath.Join(localRepoPath, config.ModuleSyncSourceRepoChildPath, moduleName, config.AvmVersionFileName)
+	} else {
+		versionFilePath = filepath.Join(localRepoPath, moduleName, config.AvmVersionFileName)
+	}
+	err := os.WriteFile(versionFilePath, []byte(latestAvmTag+"\n"), 0644)
+	if err != nil {
+		logger.Error("Failed to write AVM version file", zap.String("module", moduleName), zap.String("path", versionFilePath), zap.Error(err))
+		return
+	}
+	logger.Info("Wrote AVM version file", zap.String("module", moduleName), zap.String("tag", latestAvmTag), zap.String("path", versionFilePath))
 }
