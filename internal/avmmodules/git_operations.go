@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
+	"github.com/go-git/go-git/v6/plumbing/client"
 	"github.com/go-git/go-git/v6/plumbing/transport/http"
 	"github.com/google/uuid"
 	adogit "github.com/microsoft/azure-devops-go-api/azuredevops/git"
@@ -324,7 +325,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		pushOpts := &git.PushOptions{}
 		// Only add auth if PAT is configured (not needed in ADO pipeline with persistCredentials: true)
 		if config.AdoPat != "" {
-			pushOpts.Auth = &http.BasicAuth{Username: "anything", Password: config.AdoPat}
+			pushOpts.ClientOptions = []client.Option{client.WithHTTPAuth(&http.BasicAuth{Username: "anything", Password: config.AdoPat})}
 		}
 		logger.Info("Pushing using go-git", zap.String("module", moduleName))
 		err = repo.Push(pushOpts)
