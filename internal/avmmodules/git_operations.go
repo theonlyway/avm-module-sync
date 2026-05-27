@@ -16,6 +16,7 @@ import (
 	"github.com/theonlyway/avm-module-sync/internal/ado"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
+	"golang.org/x/mod/semver"
 )
 
 // copyModuleToBranch copies a module from the temporary clone location to the target repository branch.
@@ -170,6 +171,22 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	authorName := config.ModuleSyncAuthorName
 	authorEmail := config.ModuleSyncAuthorEmail
 	moduleName := nameTransformer(module.GetModuleName())
+
+	// Skip if the upstream tag hasn't advanced since the last sync
+	lastSyncedTag := readAvmVersionFile(moduleName, logger)
+	if latestAvmTag != "" && lastSyncedTag != "" {
+		latest := ensureSemverPrefix(latestAvmTag)
+		synced := ensureSemverPrefix(lastSyncedTag)
+		if semver.IsValid(latest) && semver.IsValid(synced) {
+			if semver.Compare(latest, synced) <= 0 {
+				logger.Info("Upstream tag has not advanced since last sync, skipping",
+					zap.String("module", moduleName),
+					zap.String("lastSyncedTag", lastSyncedTag),
+					zap.String("latestAvmTag", latestAvmTag))
+				return nil
+			}
+		}
+	}
 	commitMsg := buildConventionalCommitMessage(commitType, moduleName)
 	sourcePath := config.SourceRepoPath
 	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)

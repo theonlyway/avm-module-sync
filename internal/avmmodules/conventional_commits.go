@@ -37,6 +37,15 @@ func higherConventionalCommitType(a, b string) string {
 	return a
 }
 
+// ensureSemverPrefix returns v with a leading "v" if it doesn't already have one,
+// so that tags like "1.2.3" and "v1.2.3" are both accepted by golang.org/x/mod/semver.
+func ensureSemverPrefix(v string) string {
+	if strings.HasPrefix(v, "v") {
+		return v
+	}
+	return "v" + v
+}
+
 // footerBreakingRe matches a BREAKING CHANGE or BREAKING-CHANGE footer token with either
 // the ": " or " #" separator defined by the Conventional Commits spec.
 var footerBreakingRe = regexp.MustCompile(`(?m)^BREAKING[\- ]CHANGE(: | #)`)
@@ -138,8 +147,9 @@ func analyzeConventionalCommits(repoPath string, lastSyncedTag string, logger *z
 
 	// Sort tags newest-first by semantic version, falling back to timestamp for non-semver tags.
 	sort.Slice(tags, func(i, j int) bool {
-		if semver.IsValid(tags[i].name) && semver.IsValid(tags[j].name) {
-			return semver.Compare(tags[i].name, tags[j].name) > 0
+		ni, nj := ensureSemverPrefix(tags[i].name), ensureSemverPrefix(tags[j].name)
+		if semver.IsValid(ni) && semver.IsValid(nj) {
+			return semver.Compare(ni, nj) > 0
 		}
 		return tags[i].when > tags[j].when
 	})
