@@ -103,7 +103,9 @@ func Main() {
 		defer logger.Sync()
 
 	} else {
-		logger, _ = zap.NewProduction()
+		cfg := zap.NewProductionConfig()
+		cfg.Sampling = nil
+		logger, _ = cfg.Build()
 		sugaredLogger = logger.Sugar()
 		defer logger.Sync()
 	}
