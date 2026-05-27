@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/go-git/go-git/v6/plumbing/object"
@@ -134,8 +136,13 @@ func analyzeConventionalCommits(repoPath string, lastSyncedTag string, logger *z
 		return nil
 	})
 
-	// Sort tags newest-first
-	sort.Slice(tags, func(i, j int) bool { return tags[i].when > tags[j].when })
+	// Sort tags newest-first by semantic version, falling back to timestamp for non-semver tags.
+	sort.Slice(tags, func(i, j int) bool {
+		if semver.IsValid(tags[i].name) && semver.IsValid(tags[j].name) {
+			return semver.Compare(tags[i].name, tags[j].name) > 0
+		}
+		return tags[i].when > tags[j].when
+	})
 
 	if len(tags) == 0 {
 		head, err := repo.Head()

@@ -7,6 +7,8 @@ require (
 	github.com/go-git/go-git/v6 v6.0.0-alpha.4
 )
 
+require golang.org/x/mod v0.36.0 // indirect
+
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.2 // indirect
