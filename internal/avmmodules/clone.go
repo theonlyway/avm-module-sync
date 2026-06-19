@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-git/go-git/v6"
+	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
 )
@@ -74,6 +75,35 @@ func CloneRepo(repoURL string, destPath string) error {
 	return nil
 }
 
+// checkoutCommit checks out the given commit hash in the cloned repo so the copied module
+// content matches the tag recorded in .avm-version. When the hash is empty (no tags were
+// found) the default-branch HEAD is left in place.
+func checkoutCommit(repoPath string, commitHash string, moduleName string, logger *zap.Logger) {
+	if commitHash == "" {
+		logger.Warn("No tag commit to checkout, using default branch HEAD", zap.String("module", moduleName), zap.String("path", repoPath))
+		return
+	}
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		logger.Error("Failed to open repo for checkout", zap.String("module", moduleName), zap.String("path", repoPath), zap.Error(err))
+		return
+	}
+	w, err := repo.Worktree()
+	if err != nil {
+		logger.Error("Failed to get worktree for checkout", zap.String("module", moduleName), zap.String("path", repoPath), zap.Error(err))
+		return
+	}
+	err = w.Checkout(&git.CheckoutOptions{
+		Hash:  plumbing.NewHash(commitHash),
+		Force: true,
+	})
+	if err != nil {
+		logger.Error("Failed to checkout tag commit, using default branch HEAD", zap.String("module", moduleName), zap.String("commit", commitHash), zap.Error(err))
+		return
+	}
+	logger.Info("Checked out tag commit for module", zap.String("module", moduleName), zap.String("commit", commitHash))
+}
+
 // CloneModulesInBatches clones multiple modules in parallel using a worker pool pattern.
 // It applies the specified name transformer to each module and removes the .git folder after cloning.
 func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Logger, processor *ModuleProcessor, nameTransformer ModuleNameTransformer) {
@@ -101,6 +131,7 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 				} else if os.IsNotExist(err) {
 					CloneRepo(module.GetRepoURL(), tempPath)
 					latestTag, latestCommit := findLatestAvmTag(tempPath, logger)
+					checkoutCommit(tempPath, latestCommit, newModuleName, logger)
 					processor.LatestAvmTagMap.Store(newModuleName, latestTag)
 					processor.LatestAvmCommitMap.Store(newModuleName, latestCommit)
 					removeGitFolder(processor, tempPath, newModuleName)
