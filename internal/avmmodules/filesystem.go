@@ -76,22 +76,41 @@ func parseAvmVersionCommit(content string) string {
 	return ""
 }
 
-// readAvmVersionFile reads the last-synced AVM tag and commit hash from the module's version
-// file. Returns empty strings if the file does not exist or cannot be read; the commit is
-// empty for older files that stored only the bare tag.
-func readAvmVersionFile(moduleName string, logger *zap.Logger) (tag string, commit string) {
+// parseAvmVersionBackfill extracts the backfill flag from the contents of a .avm-version file.
+// Returns true only when "backfill=true" is explicitly present; defaults to false.
+// When backfill is true the sync tool targets the tag stored in the file rather than the
+// latest upstream tag, allowing a specific historical version to be published to Artifactory.
+func parseAvmVersionBackfill(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if val, ok := strings.CutPrefix(line, "backfill="); ok {
+			return strings.TrimSpace(val) == "true"
+		}
+	}
+	return false
+}
+
+// readAvmVersionFile reads the last-synced AVM tag, commit hash, and backfill flag from the
+// module's version file. Returns empty strings and false if the file does not exist or cannot
+// be read; the commit is empty for older files that stored only the bare tag.
+func readAvmVersionFile(moduleName string, logger *zap.Logger) (tag string, commit string, backfill bool) {
 	path := moduleVersionFilePath(moduleName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			logger.Warn("Could not read AVM version file", zap.String("module", moduleName), zap.String("path", path), zap.Error(err))
 		}
-		return "", ""
+		return "", "", false
 	}
 	tag = parseAvmVersionTag(string(data))
 	commit = parseAvmVersionCommit(string(data))
-	logger.Info("Read last synced AVM version from file", zap.String("module", moduleName), zap.String("tag", tag), zap.String("commit", commit))
-	return tag, commit
+	backfill = parseAvmVersionBackfill(string(data))
+	logger.Info("Read last synced AVM version from file",
+		zap.String("module", moduleName),
+		zap.String("tag", tag),
+		zap.String("commit", commit),
+		zap.Bool("backfill", backfill))
+	return tag, commit, backfill
 }
 
 // writeAvmVersionFile writes the latest AVM tag and the commit it points to to the module's

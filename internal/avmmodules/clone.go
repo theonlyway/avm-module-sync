@@ -3,6 +3,7 @@ package avmmodules
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/theonlyway/avm-module-sync/internal/config"
@@ -83,6 +84,17 @@ func checkoutCommit(repoPath string, commitHash string, moduleName string, logge
 	logger.Info("Checked out tag commit for module", zap.String("module", moduleName), zap.String("commit", commitHash))
 }
 
+// findTagCommit returns the commit hash that a specific upstream tag points to by running
+// git rev-list, which correctly dereferences annotated tags to their target commit.
+func findTagCommit(repoPath string, tag string, moduleName string, logger *zap.Logger) string {
+	out, err := runGit(repoPath, logger, moduleName, "rev-list", "-n", "1", tag)
+	if err != nil || strings.TrimSpace(out) == "" {
+		logger.Warn("Could not resolve commit for tag", zap.String("module", moduleName), zap.String("tag", tag))
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
 // CloneModulesInBatches clones multiple modules in parallel using a worker pool pattern.
 // It applies the specified name transformer to each module and removes the .git folder after cloning.
 func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Logger, processor *ModuleProcessor, nameTransformer ModuleNameTransformer) {
@@ -108,8 +120,25 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 					processor.LatestAvmCommitMap.Store(newModuleName, "")
 					renameFolders(processor, tempPath, newPath, newModuleName)
 				} else if os.IsNotExist(err) {
+					// Check before cloning whether this module is flagged for backfill so we
+					// can target the stored tag instead of the latest upstream tag.
+					storedTag, _, backfill := readAvmVersionFile(newModuleName, logger)
 					CloneRepo(module.GetRepoURL(), tempPath)
-					latestTag, latestCommit := findLatestAvmTag(tempPath, logger)
+					var latestTag, latestCommit string
+					if backfill && storedTag != "" {
+					logger.Info("Backfill mode: cloning upstream then checking out stored tag",
+						zap.String("module", newModuleName),
+						zap.String("tag", storedTag),
+						zap.String("repoURL", module.GetRepoURL()))
+					latestTag = storedTag
+					latestCommit = findTagCommit(tempPath, storedTag, newModuleName, logger)
+					logger.Info("Backfill mode: resolved tag commit",
+						zap.String("module", newModuleName),
+						zap.String("tag", storedTag),
+						zap.String("commit", latestCommit))
+					} else {
+						latestTag, latestCommit = findLatestAvmTag(tempPath, logger)
+					}
 					checkoutCommit(tempPath, latestCommit, newModuleName, logger)
 					processor.LatestAvmTagMap.Store(newModuleName, latestTag)
 					processor.LatestAvmCommitMap.Store(newModuleName, latestCommit)

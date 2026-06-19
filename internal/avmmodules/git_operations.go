@@ -258,12 +258,20 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	// Skip if the upstream tag hasn't advanced since the last sync, unless this module is
 	// force-updated via the force-update-all or force-update-modules flags. When the tag name
 	// is unchanged but the commit it points to has moved, the module is re-synced.
-	lastSyncedTag, lastSyncedCommit := readAvmVersionFile(moduleName, logger)
-	if isModuleForced(module.GetModuleName()) {
-		logger.Info("Force-updating module, bypassing tag advancement check",
-			zap.String("module", moduleName),
-			zap.String("lastSyncedTag", lastSyncedTag),
-			zap.String("latestAvmTag", latestAvmTag))
+	lastSyncedTag, lastSyncedCommit, backfill := readAvmVersionFile(moduleName, logger)
+	if isModuleForced(module.GetModuleName()) || backfill {
+		switch {
+		case backfill:
+			logger.Info("Backfilling module at stored tag, bypassing tag advancement check",
+				zap.String("module", moduleName),
+				zap.String("backfillTag", lastSyncedTag),
+				zap.String("latestAvmTag", latestAvmTag))
+		default:
+			logger.Info("Force-updating module, bypassing tag advancement check",
+				zap.String("module", moduleName),
+				zap.String("lastSyncedTag", lastSyncedTag),
+				zap.String("latestAvmTag", latestAvmTag))
+		}
 	} else if latestAvmTag != "" && lastSyncedTag != "" {
 		latest := ensureSemverPrefix(latestAvmTag)
 		synced := ensureSemverPrefix(lastSyncedTag)
