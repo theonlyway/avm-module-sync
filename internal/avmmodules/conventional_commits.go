@@ -1,13 +1,13 @@
 package avmmodules
 
 import (
+	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/mod/semver"
 
-	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing"
 	"go.uber.org/zap"
 )
 
@@ -20,43 +20,45 @@ func ensureSemverPrefix(v string) string {
 	return "v" + v
 }
 
-// findLatestAvmTag opens the cloned AVM repo and returns the name of the most recent tag
-// (ordered by semantic version, falling back to the tag's timestamp for non-semver tags)
-// along with the commit hash that tag points to.  Returns ("", "") when the repository has
-// no tags or cannot be read.  The published innersource version is kept in lock-step with
-// this upstream tag, so no commit-message analysis is performed.
+// findLatestAvmTag runs git in the cloned AVM repo and returns the name of the most recent tag
+// (ordered by semantic version, falling back to the tag's timestamp for non-semver tags) along
+// with the commit hash that tag points to.  Returns ("", "") when the repository has no tags or
+// git fails.  The published innersource version is kept in lock-step with this upstream tag, so
+// no commit-message analysis is performed.
 func findLatestAvmTag(repoPath string, logger *zap.Logger) (latestTag string, latestTagCommit string) {
-	repo, err := git.PlainOpen(repoPath)
+	// %(*objectname) is the dereferenced commit for annotated tags (empty for lightweight tags).
+	cmd := exec.Command("git", "for-each-ref",
+		"--format=%(refname:short)%09%(objectname)%09%(*objectname)%09%(creatordate:unix)",
+		"refs/tags")
+	cmd.Dir = repoPath
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		logger.Warn("Could not open cloned repo to find latest tag", zap.String("path", repoPath), zap.Error(err))
+		logger.Warn("Could not list tags to find latest", zap.String("path", repoPath), zap.String("output", string(out)), zap.Error(err))
 		return "", ""
 	}
 
 	type tagInfo struct {
-		name       string
-		commitHash plumbing.Hash
-		when       int64 // unix seconds for sorting non-semver tags
+		name   string
+		commit string
+		when   int64 // unix seconds for sorting non-semver tags
 	}
 
 	var tags []tagInfo
-
-	tagIter, err := repo.Tags()
-	if err != nil {
-		logger.Warn("Could not list tags", zap.String("path", repoPath), zap.Error(err))
-		return "", ""
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 4 {
+			continue
+		}
+		commit := fields[2] // dereferenced commit for annotated tags
+		if commit == "" {
+			commit = fields[1] // lightweight tag points straight at the commit
+		}
+		when, _ := strconv.ParseInt(fields[3], 10, 64)
+		tags = append(tags, tagInfo{name: fields[0], commit: commit, when: when})
 	}
-	_ = tagIter.ForEach(func(ref *plumbing.Reference) error {
-		// Annotated tag
-		if tagObj, err := repo.TagObject(ref.Hash()); err == nil {
-			tags = append(tags, tagInfo{name: ref.Name().Short(), commitHash: tagObj.Target, when: tagObj.Tagger.When.Unix()})
-			return nil
-		}
-		// Lightweight tag
-		if c, err := repo.CommitObject(ref.Hash()); err == nil {
-			tags = append(tags, tagInfo{name: ref.Name().Short(), commitHash: ref.Hash(), when: c.Author.When.Unix()})
-		}
-		return nil
-	})
 
 	if len(tags) == 0 {
 		logger.Info("No tags found in AVM repo", zap.String("path", repoPath))
@@ -75,6 +77,6 @@ func findLatestAvmTag(repoPath string, logger *zap.Logger) (latestTag string, la
 	logger.Info("Found latest AVM tag",
 		zap.String("path", repoPath),
 		zap.String("tag", tags[0].name),
-		zap.String("commit", tags[0].commitHash.String()))
-	return tags[0].name, tags[0].commitHash.String()
+		zap.String("commit", tags[0].commit))
+	return tags[0].name, tags[0].commit
 }

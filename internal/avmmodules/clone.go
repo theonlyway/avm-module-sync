@@ -1,12 +1,10 @@
 package avmmodules
 
 import (
-	"io"
 	"os"
+	"os/exec"
 	"sync"
 
-	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing"
 	"github.com/theonlyway/avm-module-sync/internal/config"
 	"go.uber.org/zap"
 )
@@ -57,22 +55,17 @@ func batchSlice[T any](items []T, batchSize int) [][]T {
 
 // CloneRepo clones a Git repository from the specified URL to the destination path.
 func CloneRepo(repoURL string, destPath string) error {
-	var progressWriter io.Writer
+	args := []string{"clone"}
+	if !config.DebugMode {
+		args = append(args, "--quiet")
+	}
+	args = append(args, repoURL, destPath)
+	cmd := exec.Command("git", args...)
 	if config.DebugMode {
-		progressWriter = os.Stdout
-	} else {
-		progressWriter = nil
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 	}
-	_, err := git.PlainClone(destPath, &git.CloneOptions{
-		URL:      repoURL,
-		Progress: progressWriter,
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return cmd.Run()
 }
 
 // checkoutCommit checks out the given commit hash in the cloned repo so the copied module
@@ -83,22 +76,8 @@ func checkoutCommit(repoPath string, commitHash string, moduleName string, logge
 		logger.Warn("No tag commit to checkout, using default branch HEAD", zap.String("module", moduleName), zap.String("path", repoPath))
 		return
 	}
-	repo, err := git.PlainOpen(repoPath)
-	if err != nil {
-		logger.Error("Failed to open repo for checkout", zap.String("module", moduleName), zap.String("path", repoPath), zap.Error(err))
-		return
-	}
-	w, err := repo.Worktree()
-	if err != nil {
-		logger.Error("Failed to get worktree for checkout", zap.String("module", moduleName), zap.String("path", repoPath), zap.Error(err))
-		return
-	}
-	err = w.Checkout(&git.CheckoutOptions{
-		Hash:  plumbing.NewHash(commitHash),
-		Force: true,
-	})
-	if err != nil {
-		logger.Error("Failed to checkout tag commit, using default branch HEAD", zap.String("module", moduleName), zap.String("commit", commitHash), zap.Error(err))
+	if out, err := runGit(repoPath, logger, moduleName, "checkout", "-f", commitHash); err != nil {
+		logger.Error("Failed to checkout tag commit, using default branch HEAD", zap.String("module", moduleName), zap.String("commit", commitHash), zap.String("output", out), zap.Error(err))
 		return
 	}
 	logger.Info("Checked out tag commit for module", zap.String("module", moduleName), zap.String("commit", commitHash))

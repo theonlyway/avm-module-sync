@@ -2,6 +2,7 @@ package avmmodules
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,10 +10,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/go-git/go-git/v6"
-	"github.com/go-git/go-git/v6/plumbing"
-	"github.com/go-git/go-git/v6/plumbing/client"
-	"github.com/go-git/go-git/v6/plumbing/transport/http"
 	"github.com/google/uuid"
 	adogit "github.com/microsoft/azure-devops-go-api/azuredevops/git"
 	cp "github.com/otiai10/copy"
@@ -148,11 +145,12 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 }
 
 // avmRegistrySourceRe matches a Terraform/OpenTofu `source` argument that references a module on
-// the public AVM registry, capturing the AVM module name (e.g. avm-utl-regions) and any optional
+// the public AVM registry, capturing the AVM module name (e.g. avm-utl-interfaces) and any optional
 // submodule subpath (e.g. //modules/subnet). The optional host prefix covers both the Terraform
 // (registry.terraform.io) and OpenTofu (registry.opentofu.org) default registries; the bare
-// namespace/name/provider form is the common case.
-var avmRegistrySourceRe = regexp.MustCompile(`(source\s*=\s*")(?:registry\.(?:terraform\.io|opentofu\.org)/)?Azure/(avm-[a-z0-9-]+)/azurerm(//[^"]*)?(")`)
+// namespace/name/provider form is the common case. The provider segment is matched generically
+// (e.g. azurerm, azure) since the rewritten Artifactory source supplies its own provider.
+var avmRegistrySourceRe = regexp.MustCompile(`(source\s*=\s*")(?:registry\.(?:terraform\.io|opentofu\.org)/)?Azure/(avm-[a-z0-9-]+)/[a-z0-9]+(//[^"]*)?(")`)
 
 // rewriteRegistrySourcesToArtifactory rewrites Terraform module `source` arguments that point at
 // the public AVM Terraform registry so they instead point at the configured Artifactory path.
@@ -297,100 +295,29 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		}
 	}
 	commitMsg := buildCommitMessage(moduleName)
-	sourcePath := config.SourceRepoPath
-	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)
-	remoteRef := plumbing.ReferenceName("refs/remotes/origin/" + branchName)
-	repo, err := git.PlainOpen(sourcePath)
+	defaultBranch := config.DefaultBranchName
+	baseRef := "origin/" + defaultBranch
 	logger.Info("Starting git operations", zap.String("module", moduleName), zap.String("path", localRepoPath))
-	if err != nil {
-		logger.Error("Failed to open repo", zap.String("module", moduleName), zap.String("path", localRepoPath), zap.Error(err))
+
+	// Configure the commit identity (CI checkouts often have none set).
+	_, _ = runGit(localRepoPath, logger, moduleName, "config", "user.name", authorName)
+	_, _ = runGit(localRepoPath, logger, moduleName, "config", "user.email", authorEmail)
+
+	// Create (or reset) the module branch fresh from the default branch using a single raw-git
+	// checkout -B. This guarantees the branch contains only the default branch plus this one
+	// module, eliminating the index desync that previously let other modules' files leak into
+	// the commit. -f discards any local modifications left from the prior module.
+	logger.Info("Creating module branch from default branch", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("base", baseRef))
+	if out, err := runGit(localRepoPath, logger, moduleName, "checkout", "-f", "-B", branchName, baseRef); err != nil {
+		logger.Error("Failed to create module branch", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("output", out), zap.Error(err))
 		return err
 	}
 
-	w, err := repo.Worktree()
-	if err != nil {
-		logger.Error("Failed to get worktree", zap.String("module", moduleName), zap.String("path", localRepoPath), zap.Error(err))
+	// Remove any untracked files/directories left over from a previously synced module so they
+	// are not swept into this module's commit by `git add -A`.
+	if out, err := runGit(localRepoPath, logger, moduleName, "clean", "-ffd"); err != nil {
+		logger.Error("Failed to clean working tree", zap.String("module", moduleName), zap.String("output", out), zap.Error(err))
 		return err
-	}
-
-	// Ensure local branch exists before checking out
-	// In ADO pipelines, repo may be in detached HEAD state
-	logger.Info("Checking out default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()))
-	_, err = repo.Reference(defaultBranchName, false)
-	if err == plumbing.ErrReferenceNotFound {
-		// Local branch doesn't exist, create it from remote
-		logger.Info("Local default branch not found, creating from remote", zap.String("module", moduleName))
-		remoteDefaultRef := plumbing.ReferenceName("refs/remotes/origin/" + config.DefaultBranchName)
-		remoteRef, err := repo.Reference(remoteDefaultRef, true)
-		if err != nil {
-			logger.Error("Failed to get remote default branch reference", zap.String("module", moduleName), zap.String("branch", remoteDefaultRef.String()), zap.Error(err))
-			return err
-		}
-		// Create local branch pointing to same commit as remote
-		headRef := plumbing.NewHashReference(defaultBranchName, remoteRef.Hash())
-		err = repo.Storer.SetReference(headRef)
-		if err != nil {
-			logger.Error("Failed to create local default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.Error(err))
-			return err
-		}
-		logger.Info("Created local default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.String("commit", remoteRef.Hash().String()))
-	}
-
-	err = w.Checkout(&git.CheckoutOptions{
-		Branch: defaultBranchName,
-		Force:  true,
-	})
-	if err != nil {
-		logger.Error("Failed to checkout default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath), zap.Error(err))
-		return err
-	}
-	logger.Info("Checked out default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath))
-
-	// Ensure the working tree exactly matches the default branch before staging this module.
-	// go-git's force checkout resets tracked files but leaves behind untracked files/directories
-	// from a previously synced module; without cleaning them, `git add -A` would sweep every prior
-	// module into this module's commit. Use system git to hard-reset and remove untracked content.
-	cmdReset := exec.Command("git", "reset", "--hard", "HEAD")
-	cmdReset.Dir = localRepoPath
-	if outReset, errReset := cmdReset.CombinedOutput(); errReset != nil {
-		logger.Error("Failed to reset working tree to default branch", zap.String("module", moduleName), zap.String("output", string(outReset)), zap.Error(errReset))
-	}
-	cmdClean := exec.Command("git", "clean", "-fd")
-	cmdClean.Dir = localRepoPath
-	if outClean, errClean := cmdClean.CombinedOutput(); errClean != nil {
-		logger.Error("Failed to clean working tree of untracked files", zap.String("module", moduleName), zap.String("output", string(outClean)), zap.Error(errClean))
-	}
-
-	// Check if branch already exists remotely
-	exists, err := remoteBranchExists(repo, remoteRef, logger, moduleName)
-	if err != nil {
-		logger.Error("Failed to check if branch exists remotely", zap.String("module", moduleName), zap.String("branch", remoteRef.String()), zap.String("path", localRepoPath), zap.Error(err))
-		return err
-	}
-	if exists {
-		logger.Info("Branch already exists remotely", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath))
-		err = w.Checkout(&git.CheckoutOptions{
-			Branch: remoteRef,
-			Force:  true,
-		})
-		if err != nil {
-			logger.Error("Failed to create branch", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
-			return err
-		} else {
-			logger.Info("Created branch for module", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath))
-		}
-	} else {
-		logger.Info("Creating and checking out module branch", zap.String("module", moduleName), zap.String("branch", branchName))
-		err = w.Checkout(&git.CheckoutOptions{
-			Branch: plumbing.NewBranchReferenceName(branchName),
-			Create: true,
-		})
-		if err != nil {
-			logger.Error("Failed to create branch", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath), zap.Error(err))
-			return err
-		} else {
-			logger.Info("Created branch for module", zap.String("module", moduleName), zap.String("branch", branchName), zap.String("path", localRepoPath))
-		}
 	}
 
 	copyModuleToBranch(module, localRepoPath, nameTransformer, logger)
@@ -399,97 +326,51 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	writeAvmVersionFile(moduleName, localRepoPath, latestAvmTag, latestAvmCommit, logger)
 
 	// Apply patches if they exist
-	err = applyPatchesIfExist(moduleName, localRepoPath, logger)
-	if err != nil {
+	if err := applyPatchesIfExist(moduleName, localRepoPath, logger); err != nil {
 		logger.Warn("Errors occurred while applying patches, but continuing with commit", zap.String("module", moduleName), zap.Error(err))
 	}
 
 	// Rewrite public AVM registry module sources to Artifactory if a template is configured
-	err = rewriteRegistrySourcesToArtifactory(moduleName, localRepoPath, logger)
-	if err != nil {
+	if err := rewriteRegistrySourcesToArtifactory(moduleName, localRepoPath, logger); err != nil {
 		logger.Warn("Errors occurred while rewriting registry sources, but continuing with commit", zap.String("module", moduleName), zap.Error(err))
 	}
 
-	// Add all module files to staging using system git to respect .gitattributes and line endings since it seems go-git doesn't
-	// Use -A to also stage deletions of files that exist in repo but not in source
-	logger.Info("Adding all files to staging using system git", zap.String("module", moduleName))
-	cmdAdd := exec.Command("git", "add", "-A", ".")
-	cmdAdd.Dir = localRepoPath
-	outputAdd, err := cmdAdd.CombinedOutput()
-	if err != nil {
-		logger.Error("Failed to add changes with system git", zap.String("module", moduleName), zap.String("output", string(outputAdd)), zap.Error(err))
-	}
-
-	// Check if there are any staged changes to commit
-	logger.Info("Checking git status", zap.String("module", moduleName))
-	status, err := w.Status()
-	if err != nil {
-		logger.Error("Failed to get git status", zap.String("module", moduleName), zap.Error(err))
+	// Stage all module files (respecting .gitattributes/line endings) including deletions.
+	logger.Info("Staging changes", zap.String("module", moduleName))
+	if out, err := runGit(localRepoPath, logger, moduleName, "add", "-A", "."); err != nil {
+		logger.Error("Failed to stage changes", zap.String("module", moduleName), zap.String("output", out), zap.Error(err))
 		return err
 	}
-	if config.DebugMode {
-		// Log all changed files and their status
-		for file, fileStatus := range status {
-			logger.Info("Git file status", zap.String("module", moduleName), zap.String("file", file), zap.String("worktree", string(fileStatus.Worktree)), zap.String("staging", string(fileStatus.Staging)))
-		}
-	}
 
-	hasStagedChanges := false
-	for _, fileStatus := range status {
-		if fileStatus.Staging != git.Unmodified {
-			hasStagedChanges = true
-			break
-		}
+	// Skip the commit/PR when nothing actually changed for this module.
+	statusOut, err := runGit(localRepoPath, logger, moduleName, "status", "--porcelain")
+	if err != nil {
+		return err
 	}
-
-	if !hasStagedChanges {
+	if strings.TrimSpace(statusOut) == "" {
 		logger.Info("No staged changes to commit", zap.String("module", moduleName))
 		return nil
 	}
 
-	// Configure git user for this repository (needed for system git commit)
-	cmdConfigName := exec.Command("git", "config", "user.name", authorName)
-	cmdConfigName.Dir = localRepoPath
-	_, _ = cmdConfigName.CombinedOutput() // Ignore errors, config might already be set
-
-	cmdConfigEmail := exec.Command("git", "config", "user.email", authorEmail)
-	cmdConfigEmail.Dir = localRepoPath
-	_, _ = cmdConfigEmail.CombinedOutput() // Ignore errors, config might already be set
-
-	// Commit using system git (since we're using system git for add)
-	logger.Info("Commiting changes", zap.String("module", moduleName), zap.String("commit_msg", commitMsg))
-	cmdCommit := exec.Command("git", "commit", "-m", commitMsg)
-	cmdCommit.Dir = localRepoPath
-	outputCommit, err := cmdCommit.CombinedOutput()
-	if err != nil {
-		logger.Error("Failed to commit changes", zap.String("module", moduleName), zap.String("output", string(outputCommit)), zap.Error(err))
+	logger.Info("Committing changes", zap.String("module", moduleName), zap.String("commit_msg", commitMsg))
+	if out, err := runGit(localRepoPath, logger, moduleName, "commit", "-m", commitMsg); err != nil {
+		logger.Error("Failed to commit changes", zap.String("module", moduleName), zap.String("output", out), zap.Error(err))
 		return err
 	}
 
-	// Push
-	logger.Info("Pushing changes to origin", zap.String("module", moduleName))
+	// Force-push so the remote branch always reflects exactly this module's state, healing any
+	// previously polluted branch. In an ADO pipeline persistCredentials handles auth; for local
+	// runs a PAT is injected via an http extra header.
+	logger.Info("Pushing changes to origin", zap.String("module", moduleName), zap.String("branch", branchName))
+	pushArgs := []string{}
 	if config.AdoPat != "" {
-		pushOpts := &git.PushOptions{}
-		// Only add auth if PAT is configured (not needed in ADO pipeline with persistCredentials: true)
-		if config.AdoPat != "" {
-			pushOpts.ClientOptions = []client.Option{client.WithHTTPAuth(&http.BasicAuth{Username: "anything", Password: config.AdoPat})}
-		}
-		logger.Info("Pushing using go-git", zap.String("module", moduleName))
-		err = repo.Push(pushOpts)
-		if err != nil {
-			logger.Error("Failed to push changes to origin", zap.String("module", moduleName), zap.Error(err))
-			return err
-		}
-	} else {
-		logger.Info("Pushing using system git", zap.String("module", moduleName))
-		cmd := exec.Command("git", "push", "origin", "HEAD:"+branchName)
-		cmd.Dir = localRepoPath
-		output, err := cmd.CombinedOutput()
-		logger.Info("git push output", zap.String("module", moduleName), zap.String("output", string(output)))
-		if err != nil {
-			logger.Error("git push failed", zap.Error(err))
-			return err
-		}
+		authHeader := "Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(":"+config.AdoPat))
+		pushArgs = append(pushArgs, "-c", "http.extraheader="+authHeader)
+	}
+	pushArgs = append(pushArgs, "push", "-f", "origin", "HEAD:refs/heads/"+branchName)
+	if out, err := runGit(localRepoPath, logger, moduleName, pushArgs...); err != nil {
+		logger.Error("Failed to push changes to origin", zap.String("module", moduleName), zap.String("output", out), zap.Error(err))
+		return err
 	}
 	// Create pull request
 	title := buildCommitMessage(moduleName)
@@ -498,6 +379,12 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	targetRef := "refs/heads/" + config.DefaultBranchName
 	pr, err := createPullRequest(clients.GitClient, ctx, repoId, project, sourceRef, targetRef, title, description)
 	if err != nil {
+		// An active PR for this branch already exists (e.g. on a re-run); the force-push above
+		// already updated it, so treat this as success rather than failing the module.
+		if strings.Contains(strings.ToLower(err.Error()), "active pull request") {
+			logger.Info("Pull request already exists for branch, skipping creation", zap.String("module", moduleName), zap.String("branch", branchName))
+			return nil
+		}
 		logger.Error("Failed to create pull request", zap.String("module", moduleName), zap.Error(err))
 		return err
 	}
@@ -505,14 +392,19 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	return nil
 }
 
-// remoteBranchExists checks if a branch exists on the remote repository.
-func remoteBranchExists(repo *git.Repository, remoteRef plumbing.ReferenceName, logger *zap.Logger, moduleName string) (bool, error) {
-	logger.Info("Checking if the branch exists on the origin", zap.String("module", moduleName), zap.String("remoteRef", remoteRef.String()))
-	_, err := repo.Reference(remoteRef, true)
-	if err == plumbing.ErrReferenceNotFound {
-		return false, nil
+// runGit runs a git subcommand in dir, logging the command and combined output on failure.
+func runGit(dir string, logger *zap.Logger, moduleName string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Error("git command failed",
+			zap.String("module", moduleName),
+			zap.Strings("args", args),
+			zap.String("output", string(out)),
+			zap.Error(err))
 	}
-	return err == nil, err
+	return string(out), err
 }
 
 // createPullRequest creates a new pull request in Azure DevOps using the provided parameters.
