@@ -86,10 +86,6 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 	}
 	for _, module := range filteredModules {
 		transformedName := resourceNameTransformer(module.GetModuleName())
-		commitType := "feat"
-		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
-			commitType = v.(string)
-		}
 		latestAvmTag := ""
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
@@ -98,7 +94,7 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
 			latestAvmCommit = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, commitType, latestAvmTag, latestAvmCommit, p.Logger)
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -137,10 +133,6 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 	}
 	for _, module := range filteredModules {
 		transformedName := patternNameTransformer(module.GetModuleName())
-		commitType := "feat"
-		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
-			commitType = v.(string)
-		}
 		latestAvmTag := ""
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
@@ -149,7 +141,7 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
 			latestAvmCommit = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, commitType, latestAvmTag, latestAvmCommit, p.Logger)
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -188,10 +180,6 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 	}
 	for _, module := range filteredModules {
 		transformedName := utilityNameTransformer(module.GetModuleName())
-		commitType := "feat"
-		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
-			commitType = v.(string)
-		}
 		latestAvmTag := ""
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
@@ -200,7 +188,7 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
 			latestAvmCommit = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, commitType, latestAvmTag, latestAvmCommit, p.Logger)
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
 

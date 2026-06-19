@@ -64,20 +64,34 @@ func parseAvmVersionTag(content string) string {
 	return strings.TrimSpace(content)
 }
 
-// readAvmVersionFile reads the last-synced AVM tag from the module's version file.
-// Returns an empty string if the file does not exist or cannot be read.
-func readAvmVersionFile(moduleName string, logger *zap.Logger) string {
+// parseAvmVersionCommit extracts the commit hash from the contents of a .avm-version file.
+// Returns an empty string for older files that stored only the bare tag.
+func parseAvmVersionCommit(content string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if commit, ok := strings.CutPrefix(line, "commit="); ok {
+			return strings.TrimSpace(commit)
+		}
+	}
+	return ""
+}
+
+// readAvmVersionFile reads the last-synced AVM tag and commit hash from the module's version
+// file. Returns empty strings if the file does not exist or cannot be read; the commit is
+// empty for older files that stored only the bare tag.
+func readAvmVersionFile(moduleName string, logger *zap.Logger) (tag string, commit string) {
 	path := moduleVersionFilePath(moduleName)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			logger.Warn("Could not read AVM version file", zap.String("module", moduleName), zap.String("path", path), zap.Error(err))
 		}
-		return ""
+		return "", ""
 	}
-	tag := parseAvmVersionTag(string(data))
-	logger.Info("Read last synced AVM tag from version file", zap.String("module", moduleName), zap.String("tag", tag))
-	return tag
+	tag = parseAvmVersionTag(string(data))
+	commit = parseAvmVersionCommit(string(data))
+	logger.Info("Read last synced AVM version from file", zap.String("module", moduleName), zap.String("tag", tag), zap.String("commit", commit))
+	return tag, commit
 }
 
 // writeAvmVersionFile writes the latest AVM tag and the commit it points to to the module's

@@ -11,16 +11,15 @@ import (
 
 // ModuleProcessor holds the context and clients needed for processing AVM modules.
 type ModuleProcessor struct {
-	Logger                    *zap.Logger
-	SugaredLogger             *zap.SugaredLogger
-	Clients                   *ado.AdoClients
-	Context                   context.Context
-	Project                   string
-	RepoId                    *uuid.UUID
-	Modules                   *ModulesStruct
-	ConventionalCommitTypeMap sync.Map
-	LatestAvmTagMap           sync.Map
-	LatestAvmCommitMap        sync.Map
+	Logger             *zap.Logger
+	SugaredLogger      *zap.SugaredLogger
+	Clients            *ado.AdoClients
+	Context            context.Context
+	Project            string
+	RepoId             *uuid.UUID
+	Modules            *ModulesStruct
+	LatestAvmTagMap    sync.Map
+	LatestAvmCommitMap sync.Map
 }
 
 // ModulesStruct holds all three types of AVM modules.

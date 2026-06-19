@@ -235,38 +235,30 @@ func rewriteTfFileSources(path string, tmpl *template.Template, logger *zap.Logg
 	return nil
 }
 
-// buildConventionalCommitMessage constructs a conventional commit message for the given
-// commit type and module name.  Recognised types: "breaking", "feat", "fix", "chore".
-func buildConventionalCommitMessage(commitType, moduleName string) string {
-	switch commitType {
-	case "breaking":
-		return "feat(module)!: Synced AVM module " + moduleName
-	case "fix":
-		return "fix(module): Synced AVM module " + moduleName
-	case "chore":
-		return "chore(module): Synced AVM module " + moduleName
-	default: // "feat" and any unknown value
-		return "feat(module): Synced AVM module " + moduleName
-	}
+// buildCommitMessage constructs the conventional commit message used for a module sync.
+// The innersource version is kept in lock-step with the upstream tag rather than being
+// derived from the commit type, so a fixed "chore" type is used; it only needs to satisfy
+// the pipeline's conventional-commit validation.
+func buildCommitMessage(moduleName string) string {
+	return "chore(module): Synced AVM module " + moduleName
 }
 
 // CommitAndPushModulesToGit handles the complete Git workflow for syncing a module.
 // It creates a feature branch, copies the module, applies patches, commits changes,
 // pushes to remote, and creates a pull request in Azure DevOps.
-// commitType should be one of "breaking", "feat", "fix", or "chore" as determined by
-// analysing the upstream AVM repo's conventional commit history.
 // latestAvmTag is the most recent tag from the upstream AVM repo and latestAvmCommit is the
 // commit hash that tag points to; both are written to .avm-version inside the module folder
 // so the next run knows where to start from and a downstream pipeline can package the module.
-func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, commitType string, latestAvmTag string, latestAvmCommit string, logger *zap.Logger) error {
+func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, latestAvmTag string, latestAvmCommit string, logger *zap.Logger) error {
 	branchName := "feat/avm-module-sync/" + nameTransformer(module.GetModuleName())
 	authorName := config.ModuleSyncAuthorName
 	authorEmail := config.ModuleSyncAuthorEmail
 	moduleName := nameTransformer(module.GetModuleName())
 
 	// Skip if the upstream tag hasn't advanced since the last sync, unless this module is
-	// force-updated via the force-update-all or force-update-modules flags.
-	lastSyncedTag := readAvmVersionFile(moduleName, logger)
+	// force-updated via the force-update-all or force-update-modules flags. When the tag name
+	// is unchanged but the commit it points to has moved, the module is re-synced.
+	lastSyncedTag, lastSyncedCommit := readAvmVersionFile(moduleName, logger)
 	if isModuleForced(module.GetModuleName()) {
 		logger.Info("Force-updating module, bypassing tag advancement check",
 			zap.String("module", moduleName),
@@ -276,16 +268,33 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		latest := ensureSemverPrefix(latestAvmTag)
 		synced := ensureSemverPrefix(lastSyncedTag)
 		if semver.IsValid(latest) && semver.IsValid(synced) {
-			if semver.Compare(latest, synced) <= 0 {
-				logger.Info("Upstream tag has not advanced since last sync, skipping",
+			cmp := semver.Compare(latest, synced)
+			switch {
+			case cmp < 0:
+				logger.Info("Upstream tag is older than last sync, skipping",
 					zap.String("module", moduleName),
 					zap.String("lastSyncedTag", lastSyncedTag),
 					zap.String("latestAvmTag", latestAvmTag))
 				return nil
+			case cmp == 0:
+				// Same tag name: skip only when the commit also matches (or either commit is
+				// unknown, e.g. an older version file without a recorded commit).
+				if lastSyncedCommit == "" || latestAvmCommit == "" || latestAvmCommit == lastSyncedCommit {
+					logger.Info("Upstream tag has not advanced since last sync, skipping",
+						zap.String("module", moduleName),
+						zap.String("lastSyncedTag", lastSyncedTag),
+						zap.String("latestAvmTag", latestAvmTag))
+					return nil
+				}
+				logger.Info("Upstream tag unchanged but commit moved, re-syncing",
+					zap.String("module", moduleName),
+					zap.String("tag", latestAvmTag),
+					zap.String("lastSyncedCommit", lastSyncedCommit),
+					zap.String("latestAvmCommit", latestAvmCommit))
 			}
 		}
 	}
-	commitMsg := buildConventionalCommitMessage(commitType, moduleName)
+	commitMsg := buildCommitMessage(moduleName)
 	sourcePath := config.SourceRepoPath
 	defaultBranchName := plumbing.ReferenceName("refs/heads/" + config.DefaultBranchName)
 	remoteRef := plumbing.ReferenceName("refs/remotes/origin/" + branchName)
@@ -466,7 +475,7 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 		}
 	}
 	// Create pull request
-	title := buildConventionalCommitMessage(commitType, moduleName)
+	title := buildCommitMessage(moduleName)
 	description := "This is an automated pull request to sync the " + moduleName + " module from the source AVM repository " + module.GetRepoURL()
 	sourceRef := "refs/heads/" + branchName
 	targetRef := "refs/heads/" + config.DefaultBranchName
