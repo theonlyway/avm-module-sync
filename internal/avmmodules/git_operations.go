@@ -147,10 +147,12 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 	return nil
 }
 
-// avmRegistrySourceRe matches a Terraform `source` argument that references a module on the
-// public AVM Terraform registry, capturing the AVM module name (e.g. avm-utl-regions) and any
-// optional submodule subpath (e.g. //modules/subnet).
-var avmRegistrySourceRe = regexp.MustCompile(`(source\s*=\s*")(?:registry\.terraform\.io/)?Azure/(avm-[a-z0-9-]+)/azurerm(//[^"]*)?(")`)
+// avmRegistrySourceRe matches a Terraform/OpenTofu `source` argument that references a module on
+// the public AVM registry, capturing the AVM module name (e.g. avm-utl-regions) and any optional
+// submodule subpath (e.g. //modules/subnet). The optional host prefix covers both the Terraform
+// (registry.terraform.io) and OpenTofu (registry.opentofu.org) default registries; the bare
+// namespace/name/provider form is the common case.
+var avmRegistrySourceRe = regexp.MustCompile(`(source\s*=\s*")(?:registry\.(?:terraform\.io|opentofu\.org)/)?Azure/(avm-[a-z0-9-]+)/azurerm(//[^"]*)?(")`)
 
 // rewriteRegistrySourcesToArtifactory rewrites Terraform module `source` arguments that point at
 // the public AVM Terraform registry so they instead point at the configured Artifactory path.
