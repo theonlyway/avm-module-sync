@@ -51,6 +51,19 @@ func moduleVersionFilePath(moduleName string) string {
 	return filepath.Join(config.SourceRepoPath, moduleName, config.AvmVersionFileName)
 }
 
+// parseAvmVersionTag extracts the tag value from the contents of a .avm-version file.
+// It supports the current "tag=...\ncommit=..." format and falls back to treating the
+// entire trimmed content as the tag for older files that stored only the bare tag.
+func parseAvmVersionTag(content string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if tag, ok := strings.CutPrefix(line, "tag="); ok {
+			return strings.TrimSpace(tag)
+		}
+	}
+	return strings.TrimSpace(content)
+}
+
 // readAvmVersionFile reads the last-synced AVM tag from the module's version file.
 // Returns an empty string if the file does not exist or cannot be read.
 func readAvmVersionFile(moduleName string, logger *zap.Logger) string {
@@ -62,14 +75,15 @@ func readAvmVersionFile(moduleName string, logger *zap.Logger) string {
 		}
 		return ""
 	}
-	tag := strings.TrimSpace(string(data))
+	tag := parseAvmVersionTag(string(data))
 	logger.Info("Read last synced AVM tag from version file", zap.String("module", moduleName), zap.String("tag", tag))
 	return tag
 }
 
-// writeAvmVersionFile writes the latest AVM tag to the module's version file so subsequent
-// runs know which tag was last synced.
-func writeAvmVersionFile(moduleName string, localRepoPath string, latestAvmTag string, logger *zap.Logger) {
+// writeAvmVersionFile writes the latest AVM tag and the commit it points to to the module's
+// version file so subsequent runs know which tag was last synced and a downstream pipeline
+// can package the module from that exact commit.
+func writeAvmVersionFile(moduleName string, localRepoPath string, latestAvmTag string, latestAvmCommit string, logger *zap.Logger) {
 	if latestAvmTag == "" {
 		logger.Warn("No AVM tag available to write to version file, skipping", zap.String("module", moduleName))
 		return
@@ -80,10 +94,11 @@ func writeAvmVersionFile(moduleName string, localRepoPath string, latestAvmTag s
 	} else {
 		versionFilePath = filepath.Join(localRepoPath, moduleName, config.AvmVersionFileName)
 	}
-	err := os.WriteFile(versionFilePath, []byte(latestAvmTag+"\n"), 0644)
+	content := "tag=" + latestAvmTag + "\ncommit=" + latestAvmCommit + "\n"
+	err := os.WriteFile(versionFilePath, []byte(content), 0644)
 	if err != nil {
 		logger.Error("Failed to write AVM version file", zap.String("module", moduleName), zap.String("path", versionFilePath), zap.Error(err))
 		return
 	}
-	logger.Info("Wrote AVM version file", zap.String("module", moduleName), zap.String("tag", latestAvmTag), zap.String("path", versionFilePath))
+	logger.Info("Wrote AVM version file", zap.String("module", moduleName), zap.String("tag", latestAvmTag), zap.String("commit", latestAvmCommit), zap.String("path", versionFilePath))
 }

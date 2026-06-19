@@ -5,6 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"text/template"
 
 	"github.com/go-git/go-git/v6"
 	"github.com/go-git/go-git/v6/plumbing"
@@ -144,6 +147,94 @@ func applyPatchesIfExist(moduleName string, localRepoPath string, logger *zap.Lo
 	return nil
 }
 
+// avmRegistrySourceRe matches a Terraform `source` argument that references a module on the
+// public AVM Terraform registry, capturing the AVM module name (e.g. avm-utl-regions) and any
+// optional submodule subpath (e.g. //modules/subnet).
+var avmRegistrySourceRe = regexp.MustCompile(`(source\s*=\s*")(?:registry\.terraform\.io/)?Azure/(avm-[a-z0-9-]+)/azurerm(//[^"]*)?(")`)
+
+// rewriteRegistrySourcesToArtifactory rewrites Terraform module `source` arguments that point at
+// the public AVM Terraform registry so they instead point at the configured Artifactory path.
+// Every .tf file under the module directory is processed except those inside an examples folder.
+// The Artifactory source is produced by executing config.ArtifactorySourceTemplate with the
+// transformed (RVM) module name available as {{ .ModuleName }}. The version argument is left
+// untouched. When no template is configured the function is a no-op.
+func rewriteRegistrySourcesToArtifactory(moduleName string, localRepoPath string, logger *zap.Logger) error {
+	if config.ArtifactorySourceTemplate == "" {
+		return nil
+	}
+
+	tmpl, err := template.New("artifactory-source").Parse(config.ArtifactorySourceTemplate)
+	if err != nil {
+		logger.Error("Failed to parse Artifactory source template", zap.String("template", config.ArtifactorySourceTemplate), zap.Error(err))
+		return err
+	}
+
+	var moduleDir string
+	if config.ModuleSyncSourceRepoChildPath != "" {
+		moduleDir = filepath.Join(localRepoPath, config.ModuleSyncSourceRepoChildPath, moduleName)
+	} else {
+		moduleDir = filepath.Join(localRepoPath, moduleName)
+	}
+
+	logger.Info("Rewriting public registry module sources to Artifactory", zap.String("module", moduleName), zap.String("moduleDir", moduleDir))
+
+	return filepath.Walk(moduleDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			// Skip examples directories entirely so example usage keeps pointing at the public registry
+			if info.Name() == config.ExamplesFolderName {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".tf" {
+			return nil
+		}
+		return rewriteTfFileSources(path, tmpl, logger)
+	})
+}
+
+// rewriteTfFileSources rewrites public AVM registry `source` references in a single .tf file
+// to the Artifactory equivalent, writing the file back only when a change is made.
+func rewriteTfFileSources(path string, tmpl *template.Template, logger *zap.Logger) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		logger.Error("Failed to read .tf file for source rewrite", zap.String("file", path), zap.Error(err))
+		return err
+	}
+
+	changed := false
+	out := avmRegistrySourceRe.ReplaceAllFunc(data, func(match []byte) []byte {
+		groups := avmRegistrySourceRe.FindSubmatch(match)
+		prefix := string(groups[1])
+		avmName := string(groups[2])
+		subpath := string(groups[3])
+		suffix := string(groups[4])
+
+		var sb strings.Builder
+		if execErr := tmpl.Execute(&sb, struct{ ModuleName string }{ModuleName: transformAvmModuleName(avmName)}); execErr != nil {
+			logger.Error("Failed to render Artifactory source template", zap.String("file", path), zap.String("module", avmName), zap.Error(execErr))
+			return match
+		}
+
+		changed = true
+		logger.Info("Rewriting registry source to Artifactory", zap.String("file", path), zap.String("from", avmName), zap.String("to", sb.String()))
+		return []byte(prefix + sb.String() + subpath + suffix)
+	})
+
+	if !changed {
+		return nil
+	}
+
+	if err := os.WriteFile(path, out, 0644); err != nil {
+		logger.Error("Failed to write rewritten .tf file", zap.String("file", path), zap.Error(err))
+		return err
+	}
+	return nil
+}
+
 // buildConventionalCommitMessage constructs a conventional commit message for the given
 // commit type and module name.  Recognised types: "breaking", "feat", "fix", "chore".
 func buildConventionalCommitMessage(commitType, moduleName string) string {
@@ -164,17 +255,24 @@ func buildConventionalCommitMessage(commitType, moduleName string) string {
 // pushes to remote, and creates a pull request in Azure DevOps.
 // commitType should be one of "breaking", "feat", "fix", or "chore" as determined by
 // analysing the upstream AVM repo's conventional commit history.
-// latestAvmTag is the most recent tag from the upstream AVM repo; it is written to
-// .avm-version inside the module folder so the next run knows where to start from.
-func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, commitType string, latestAvmTag string, logger *zap.Logger) error {
+// latestAvmTag is the most recent tag from the upstream AVM repo and latestAvmCommit is the
+// commit hash that tag points to; both are written to .avm-version inside the module folder
+// so the next run knows where to start from and a downstream pipeline can package the module.
+func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Context, project string, repoId *uuid.UUID, module T, localRepoPath string, nameTransformer ModuleNameTransformer, commitType string, latestAvmTag string, latestAvmCommit string, logger *zap.Logger) error {
 	branchName := "feat/avm-module-sync/" + nameTransformer(module.GetModuleName())
 	authorName := config.ModuleSyncAuthorName
 	authorEmail := config.ModuleSyncAuthorEmail
 	moduleName := nameTransformer(module.GetModuleName())
 
-	// Skip if the upstream tag hasn't advanced since the last sync
+	// Skip if the upstream tag hasn't advanced since the last sync, unless this module is
+	// force-updated via the force-update-all or force-update-modules flags.
 	lastSyncedTag := readAvmVersionFile(moduleName, logger)
-	if latestAvmTag != "" && lastSyncedTag != "" {
+	if isModuleForced(module.GetModuleName()) {
+		logger.Info("Force-updating module, bypassing tag advancement check",
+			zap.String("module", moduleName),
+			zap.String("lastSyncedTag", lastSyncedTag),
+			zap.String("latestAvmTag", latestAvmTag))
+	} else if latestAvmTag != "" && lastSyncedTag != "" {
 		latest := ensureSemverPrefix(latestAvmTag)
 		synced := ensureSemverPrefix(lastSyncedTag)
 		if semver.IsValid(latest) && semver.IsValid(synced) {
@@ -272,12 +370,18 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	copyModuleToBranch(module, localRepoPath, nameTransformer, logger)
 
 	// Write the version file so the next sync knows which AVM tag was last applied
-	writeAvmVersionFile(moduleName, localRepoPath, latestAvmTag, logger)
+	writeAvmVersionFile(moduleName, localRepoPath, latestAvmTag, latestAvmCommit, logger)
 
 	// Apply patches if they exist
 	err = applyPatchesIfExist(moduleName, localRepoPath, logger)
 	if err != nil {
 		logger.Warn("Errors occurred while applying patches, but continuing with commit", zap.String("module", moduleName), zap.Error(err))
+	}
+
+	// Rewrite public AVM registry module sources to Artifactory if a template is configured
+	err = rewriteRegistrySourcesToArtifactory(moduleName, localRepoPath, logger)
+	if err != nil {
+		logger.Warn("Errors occurred while rewriting registry sources, but continuing with commit", zap.String("module", moduleName), zap.Error(err))
 	}
 
 	// Add all module files to staging using system git to respect .gitattributes and line endings since it seems go-git doesn't

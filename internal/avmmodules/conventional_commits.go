@@ -103,15 +103,15 @@ func parseConventionalCommitType(msg string) string {
 // analyzeConventionalCommits opens the cloned AVM repo and walks the commits between the
 // last synced tag (read from the module's .avm-version file) and the latest tag.  When no
 // version file exists it falls back to the range between the two most recent tags.  Returns
-// the highest conventional commit type found ("breaking", "feat", "fix", or "chore") and the
-// name of the latest tag so the caller can persist it.  Falls back to ("feat", "") on any
-// unrecoverable error.
-func analyzeConventionalCommits(repoPath string, lastSyncedTag string, logger *zap.Logger) (commitType string, latestTag string) {
+// the highest conventional commit type found ("breaking", "feat", "fix", or "chore"), the
+// name of the latest tag, and the commit hash that the latest tag points to so the caller
+// can persist them.  Falls back to ("feat", "", "") on any unrecoverable error.
+func analyzeConventionalCommits(repoPath string, lastSyncedTag string, logger *zap.Logger) (commitType string, latestTag string, latestTagCommit string) {
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
 		logger.Warn("Could not open cloned repo for commit analysis, defaulting to feat",
 			zap.String("path", repoPath), zap.Error(err))
-		return "feat", ""
+		return "feat", "", ""
 	}
 
 	type tagInfo struct {
@@ -126,7 +126,7 @@ func analyzeConventionalCommits(repoPath string, lastSyncedTag string, logger *z
 	tagIter, err := repo.Tags()
 	if err != nil {
 		logger.Warn("Could not list tags, defaulting to feat", zap.String("path", repoPath), zap.Error(err))
-		return "feat", ""
+		return "feat", "", ""
 	}
 	_ = tagIter.ForEach(func(ref *plumbing.Reference) error {
 		// Annotated tag
@@ -158,10 +158,10 @@ func analyzeConventionalCommits(repoPath string, lastSyncedTag string, logger *z
 		head, err := repo.Head()
 		if err != nil {
 			logger.Warn("No tags and no HEAD, defaulting to feat", zap.String("path", repoPath))
-			return "feat", ""
+			return "feat", "", ""
 		}
 		logger.Info("No tags found, analysing all commits from HEAD", zap.String("path", repoPath))
-		return scanCommits(repo, head.Hash(), plumbing.ZeroHash, false, repoPath, logger), ""
+		return scanCommits(repo, head.Hash(), plumbing.ZeroHash, false, repoPath, logger), "", ""
 	}
 
 	latestTag = tags[0].name
@@ -200,7 +200,7 @@ func analyzeConventionalCommits(repoPath string, lastSyncedTag string, logger *z
 			zap.String("path", repoPath), zap.String("tag", latestTag))
 	}
 
-	return scanCommits(repo, startHash, stopHash, hasStop, repoPath, logger), latestTag
+	return scanCommits(repo, startHash, stopHash, hasStop, repoPath, logger), latestTag, tags[0].commitHash.String()
 }
 
 // scanCommits walks the commit graph from startHash, stopping at stopHash (when hasStop is true),

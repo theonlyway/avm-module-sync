@@ -20,6 +20,7 @@ type ModuleProcessor struct {
 	Modules                   *ModulesStruct
 	ConventionalCommitTypeMap sync.Map
 	LatestAvmTagMap           sync.Map
+	LatestAvmCommitMap        sync.Map
 }
 
 // ModulesStruct holds all three types of AVM modules.

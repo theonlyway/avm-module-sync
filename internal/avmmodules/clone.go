@@ -97,13 +97,15 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 					// .git already removed in a previous run; no commit analysis possible
 					processor.ConventionalCommitTypeMap.Store(newModuleName, "feat")
 					processor.LatestAvmTagMap.Store(newModuleName, "")
+					processor.LatestAvmCommitMap.Store(newModuleName, "")
 					renameFolders(processor, tempPath, newPath, newModuleName)
 				} else if os.IsNotExist(err) {
 					lastSyncedTag := readAvmVersionFile(newModuleName, logger)
 					CloneRepo(module.GetRepoURL(), tempPath)
-					commitType, latestTag := analyzeConventionalCommits(tempPath, lastSyncedTag, logger)
+					commitType, latestTag, latestCommit := analyzeConventionalCommits(tempPath, lastSyncedTag, logger)
 					processor.ConventionalCommitTypeMap.Store(newModuleName, commitType)
 					processor.LatestAvmTagMap.Store(newModuleName, latestTag)
+					processor.LatestAvmCommitMap.Store(newModuleName, latestCommit)
 					removeGitFolder(processor, tempPath, newModuleName)
 					renameFolders(processor, tempPath, newPath, newModuleName)
 				} else {

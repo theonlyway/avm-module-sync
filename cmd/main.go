@@ -95,6 +95,10 @@ func Main() {
 	flag.Var(&stringSliceFlag{target: &config.AllowedModuleNames}, "allowed-modules", "Comma-separated list of AVM module names to include regardless of status")
 	config.ExcludedModuleNames = []string{}
 	flag.Var(&stringSliceFlag{target: &config.ExcludedModuleNames}, "excluded-modules", "Comma-separated list of AVM module names to exclude from processing")
+	flag.BoolVar(&config.ForceUpdateAllModules, "force-update-all", false, "Force update all modules even if the upstream tag has not advanced since the last sync")
+	config.ForceUpdateModuleNames = []string{}
+	flag.Var(&stringSliceFlag{target: &config.ForceUpdateModuleNames}, "force-update-modules", "Comma-separated list of AVM module names to force update even if the upstream tag has not advanced since the last sync")
+	flag.StringVar(&config.ArtifactorySourceTemplate, "artifactory-source-template", "", "Go template for the Artifactory module source used to replace public AVM registry references in .tf files (examples folders are skipped). Use {{ .ModuleName }} for the transformed module name, e.g. artifactory.riotinto.com/rio-innersource-terraform-modules__digital-products/{{ .ModuleName }}/riotinto")
 	flag.Parse()
 
 	if config.DebugMode {

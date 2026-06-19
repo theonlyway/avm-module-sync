@@ -38,6 +38,21 @@ func isModuleExcluded(moduleName string) bool {
 	return false
 }
 
+// isModuleForced checks whether the given module should be force-updated even when the
+// upstream tag has not advanced since the last sync. Returns true if the force-update-all
+// flag is set or the module name appears in the force-update list.
+func isModuleForced(moduleName string) bool {
+	if config.ForceUpdateAllModules {
+		return true
+	}
+	for _, forced := range config.ForceUpdateModuleNames {
+		if moduleName == forced {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessResourceModules filters, clones, and processes resource modules based on their status.
 // It applies the given processFunc to each filtered module after cloning and pushing to Git.
 // Modules are filtered by allowed statuses or included via the override list.
@@ -79,7 +94,11 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, commitType, latestAvmTag, p.Logger)
+		latestAvmCommit := ""
+		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
+			latestAvmCommit = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, commitType, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -126,7 +145,11 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, commitType, latestAvmTag, p.Logger)
+		latestAvmCommit := ""
+		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
+			latestAvmCommit = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, commitType, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
 	return nil
@@ -173,7 +196,11 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, commitType, latestAvmTag, p.Logger)
+		latestAvmCommit := ""
+		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
+			latestAvmCommit = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, commitType, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
 
