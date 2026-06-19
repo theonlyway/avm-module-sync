@@ -346,6 +346,21 @@ func CommitAndPushModulesToGit[T Module](clients *ado.AdoClients, ctx context.Co
 	}
 	logger.Info("Checked out default branch", zap.String("module", moduleName), zap.String("branch", defaultBranchName.String()), zap.String("path", localRepoPath))
 
+	// Ensure the working tree exactly matches the default branch before staging this module.
+	// go-git's force checkout resets tracked files but leaves behind untracked files/directories
+	// from a previously synced module; without cleaning them, `git add -A` would sweep every prior
+	// module into this module's commit. Use system git to hard-reset and remove untracked content.
+	cmdReset := exec.Command("git", "reset", "--hard", "HEAD")
+	cmdReset.Dir = localRepoPath
+	if outReset, errReset := cmdReset.CombinedOutput(); errReset != nil {
+		logger.Error("Failed to reset working tree to default branch", zap.String("module", moduleName), zap.String("output", string(outReset)), zap.Error(errReset))
+	}
+	cmdClean := exec.Command("git", "clean", "-fd")
+	cmdClean.Dir = localRepoPath
+	if outClean, errClean := cmdClean.CombinedOutput(); errClean != nil {
+		logger.Error("Failed to clean working tree of untracked files", zap.String("module", moduleName), zap.String("output", string(outClean)), zap.Error(errClean))
+	}
+
 	// Check if branch already exists remotely
 	exists, err := remoteBranchExists(repo, remoteRef, logger, moduleName)
 	if err != nil {
