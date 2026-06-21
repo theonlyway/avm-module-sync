@@ -126,16 +126,16 @@ func CloneModulesInBatches[T Module](modules []T, destDir string, logger *zap.Lo
 					CloneRepo(module.GetRepoURL(), tempPath)
 					var latestTag, latestCommit string
 					if backfill && storedTag != "" {
-					logger.Info("Backfill mode: cloning upstream then checking out stored tag",
-						zap.String("module", newModuleName),
-						zap.String("tag", storedTag),
-						zap.String("repoURL", module.GetRepoURL()))
-					latestTag = storedTag
-					latestCommit = findTagCommit(tempPath, storedTag, newModuleName, logger)
-					logger.Info("Backfill mode: resolved tag commit",
-						zap.String("module", newModuleName),
-						zap.String("tag", storedTag),
-						zap.String("commit", latestCommit))
+						logger.Info("Backfill mode: cloning upstream then checking out stored tag",
+							zap.String("module", newModuleName),
+							zap.String("tag", storedTag),
+							zap.String("repoURL", module.GetRepoURL()))
+						latestTag = storedTag
+						latestCommit = findTagCommit(tempPath, storedTag, newModuleName, logger)
+						logger.Info("Backfill mode: resolved tag commit",
+							zap.String("module", newModuleName),
+							zap.String("tag", storedTag),
+							zap.String("commit", latestCommit))
 					} else {
 						latestTag, latestCommit = findLatestAvmTag(tempPath, logger)
 					}
