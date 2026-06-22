@@ -38,10 +38,27 @@ func isModuleExcluded(moduleName string) bool {
 	return false
 }
 
+// isModuleForced checks whether the given module should be force-updated even when the
+// upstream tag has not advanced since the last sync. Returns true if the force-update-all
+// flag is set or the module name appears in the force-update list.
+func isModuleForced(moduleName string) bool {
+	if config.ForceUpdateAllModules {
+		return true
+	}
+	for _, forced := range config.ForceUpdateModuleNames {
+		if moduleName == forced {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessResourceModules filters, clones, and processes resource modules based on their status.
 // It applies the given processFunc to each filtered module after cloning and pushing to Git.
 // Modules are filtered by allowed statuses or included via the override list.
 func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModulesStruct)) error {
+	p.Logger.Info("[Resource modules] Phase 1/3: filtering modules",
+		zap.Int("total_modules", len(p.Modules.ResourceModules)))
 	// Filter modules by allowed statuses or override list
 	filteredModules := []ResourceModulesStruct{}
 	for _, module := range p.Modules.ResourceModules {
@@ -65,23 +82,29 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 		}
 	}
 
+	p.Logger.Info("[Resource modules] Phase 2/3: cloning repositories",
+		zap.Int("modules_to_process", len(filteredModules)))
 	batches := batchSlice(filteredModules, config.BatchSize)
 	for _, batch := range batches {
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, resourceNameTransformer)
 	}
+	p.Logger.Info("[Resource modules] Phase 3/3: syncing to git",
+		zap.Int("modules_to_process", len(filteredModules)))
 	for _, module := range filteredModules {
 		transformedName := resourceNameTransformer(module.GetModuleName())
-		commitType := "feat"
-		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
-			commitType = v.(string)
-		}
 		latestAvmTag := ""
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, commitType, latestAvmTag, p.Logger)
+		latestAvmCommit := ""
+		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
+			latestAvmCommit = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, resourceNameTransformer, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
+	p.Logger.Info("[Resource modules] All phases complete",
+		zap.Int("modules_processed", len(filteredModules)))
 	return nil
 }
 
@@ -89,6 +112,8 @@ func (p *ModuleProcessor) ProcessResourceModules(processFunc func(ResourceModule
 // It applies the given processFunc to each filtered module after cloning and pushing to Git.
 // Modules are filtered by allowed statuses or included via the override list.
 func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesStruct)) error {
+	p.Logger.Info("[Pattern modules] Phase 1/3: filtering modules",
+		zap.Int("total_modules", len(p.Modules.PatternModules)))
 	// Filter modules by allowed statuses or override list
 	filteredModules := []PatternModulesStruct{}
 	for _, module := range p.Modules.PatternModules {
@@ -112,23 +137,29 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 		}
 	}
 
+	p.Logger.Info("[Pattern modules] Phase 2/3: cloning repositories",
+		zap.Int("modules_to_process", len(filteredModules)))
 	batches := batchSlice(filteredModules, config.BatchSize)
 	for _, batch := range batches {
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, patternNameTransformer)
 	}
+	p.Logger.Info("[Pattern modules] Phase 3/3: syncing to git",
+		zap.Int("modules_to_process", len(filteredModules)))
 	for _, module := range filteredModules {
 		transformedName := patternNameTransformer(module.GetModuleName())
-		commitType := "feat"
-		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
-			commitType = v.(string)
-		}
 		latestAvmTag := ""
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, commitType, latestAvmTag, p.Logger)
+		latestAvmCommit := ""
+		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
+			latestAvmCommit = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, patternNameTransformer, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
+	p.Logger.Info("[Pattern modules] All phases complete",
+		zap.Int("modules_processed", len(filteredModules)))
 	return nil
 }
 
@@ -136,6 +167,8 @@ func (p *ModuleProcessor) ProcessPatternModules(processFunc func(PatternModulesS
 // It applies the given processFunc to each filtered module after cloning and pushing to Git.
 // Modules are filtered by allowed statuses or included via the override list.
 func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesStruct)) error {
+	p.Logger.Info("[Utility modules] Phase 1/3: filtering modules",
+		zap.Int("total_modules", len(p.Modules.UtilityModules)))
 	// Filter modules by allowed statuses or override list
 	filteredModules := []UtilityModulesStruct{}
 	for _, module := range p.Modules.UtilityModules {
@@ -159,23 +192,29 @@ func (p *ModuleProcessor) ProcessUtilityModules(processFunc func(UtilityModulesS
 		}
 	}
 
+	p.Logger.Info("[Utility modules] Phase 2/3: cloning repositories",
+		zap.Int("modules_to_process", len(filteredModules)))
 	batches := batchSlice(filteredModules, config.BatchSize)
 	for _, batch := range batches {
 		CloneModulesInBatches(batch, config.TempAvmModuleRepoPath, p.Logger, p, utilityNameTransformer)
 	}
+	p.Logger.Info("[Utility modules] Phase 3/3: syncing to git",
+		zap.Int("modules_to_process", len(filteredModules)))
 	for _, module := range filteredModules {
 		transformedName := utilityNameTransformer(module.GetModuleName())
-		commitType := "feat"
-		if v, ok := p.ConventionalCommitTypeMap.Load(transformedName); ok {
-			commitType = v.(string)
-		}
 		latestAvmTag := ""
 		if v, ok := p.LatestAvmTagMap.Load(transformedName); ok {
 			latestAvmTag = v.(string)
 		}
-		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, commitType, latestAvmTag, p.Logger)
+		latestAvmCommit := ""
+		if v, ok := p.LatestAvmCommitMap.Load(transformedName); ok {
+			latestAvmCommit = v.(string)
+		}
+		CommitAndPushModulesToGit(p.Clients, p.Context, p.Project, p.RepoId, module, config.SourceRepoPath, utilityNameTransformer, latestAvmTag, latestAvmCommit, p.Logger)
 		processFunc(module)
 	}
+	p.Logger.Info("[Utility modules] All phases complete",
+		zap.Int("modules_processed", len(filteredModules)))
 
 	return nil
 }

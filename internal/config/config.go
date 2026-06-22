@@ -11,6 +11,7 @@ const (
 	DefaultBranchName     string = "main"
 	PatchesFolderName     string = "patches"
 	AvmVersionFileName    string = ".avm-version"
+	ExamplesFolderName    string = "examples"
 )
 
 var ProcessResourceModules bool
@@ -32,6 +33,7 @@ var AdoPat string
 var ModuleSyncAuthorName string
 var ModuleSyncAuthorEmail string
 var ModuleSyncSourceRepoChildPath string
+var ArtifactorySourceTemplate string
 
 var TempAvmModuleRepoPath string
 var SourceRepoPath string
@@ -39,3 +41,5 @@ var SourceRepoPath string
 var AllowedStatuses []string
 var AllowedModuleNames []string
 var ExcludedModuleNames []string
+var ForceUpdateAllModules bool
+var ForceUpdateModuleNames []string

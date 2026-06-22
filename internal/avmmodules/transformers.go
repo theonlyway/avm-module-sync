@@ -1,6 +1,9 @@
 package avmmodules
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // ModuleNameTransformer is a function type that transforms module names according to specific patterns.
 type ModuleNameTransformer func(string) string
@@ -33,4 +36,19 @@ func utilityNameTransformer(name string) string {
 		return "rvm-" + matches[1] + "-azurerm-" + matches[2]
 	}
 	return name
+}
+
+// transformAvmModuleName applies the appropriate name transformer based on the AVM module's
+// type prefix (res, ptn, or utl). Names that don't match a known prefix are returned unchanged.
+func transformAvmModuleName(name string) string {
+	switch {
+	case strings.HasPrefix(name, "avm-res-"):
+		return resourceNameTransformer(name)
+	case strings.HasPrefix(name, "avm-ptn-"):
+		return patternNameTransformer(name)
+	case strings.HasPrefix(name, "avm-utl-"):
+		return utilityNameTransformer(name)
+	default:
+		return name
+	}
 }
